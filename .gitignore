@@ -1,0 +1,8 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+results/
+*.h5
+*.hdf5
+docs/_build/
+DEPLOYED_FROM
