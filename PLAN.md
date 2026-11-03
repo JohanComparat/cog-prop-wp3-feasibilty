@@ -12,7 +12,7 @@
 | A | inputs: layout, row and spectra counts of `S5_public_2031`; what it assumes public for LSST Y3 and Euclid DR2 | I4 | open |
 | B | $\ell_{\max}$ per map and shell at $k = 1, 3, 10$ h/Mpc against the ACT beam, the eROSITA PSF, shear shape noise and shot noise | N8, I11 | open |
 | C | catastrophic photometric-redshift outliers: tolerance on $f_{\rm out}$ at $0.3\sigma$ on $S_8$, and cost when free | Ref. 1 pt 5, Table 3 | open |
-| D | the public data vector (LS DR11 × eRASS1 × ACT DR6): adapter, coverage of the final vector, null tests, fit import | I19, I24 | open (waits for the vector's path and format) |
+| D | the public data vector `public_2026` (LS DR11 × eRASS1 × ACT DR6), measured with `~/software/sum_stat` (self-describing HDF5): adapter, coverage of the final vector, null tests, fit import | I19, I24 | open: the vector is expected on Fri 6 Nov, its fit in the week of 9 Nov |
 | E | covariance: light-cone count, compression, sub-block validation, one-shell C3 and its five-shell scaling | N11, I12, I27 | open |
 | F | timing of one likelihood value and gradient, and of a NUTS chain for 212 parameters | N10, I13 | open |
 | G | synthesis: `results/wp3_feasibility_summary.json`, the B2 figures, N1, N6, N7 read from `ggah_sens_study` | N1, N6, N7 | open |
@@ -37,7 +37,7 @@ The intrinsic alignments (N6), the matched calibration pair (N1) and the shell e
 
 **Part C.** `scripts/12_photoz_outliers.py` adds an outlier fraction to the $n(z)$ of the photometric samples, computes the induced cross-shell spectra in the Limber approximation with the `ggah_mod` power spectra, and propagates them to $S_8$ with the existing Jacobians.
 
-**Part D.** `scripts/21_read_vector.py` maps the public vector onto the `S5_public_2031` layout; `24_null_tests.py` runs the $y$ against CIB-deprojected $y$ and the map nulls; `25_fit_import.py` carries the fit into the summary.
+**Part D.** `scripts/21_read_vector.py` reads the `public_2026` HDF5 files of `sum_stat` (through `sum_stat`'s own reader, which carries units and cosmology) and maps the vector onto the `S5_public_2031` layout; `24_null_tests.py` runs the $y$ against CIB-deprojected $y$ and the map nulls; `25_fit_import.py` carries the fit into the summary.
 
 **Part E.** `scripts/31_lightcones.py` counts the light-cones and the realisations each route needs; `32_compression.py` compresses the vector with the Jacobians and checks the loss on $\sigma(S_8)$; `33_subblock_validation.py` compares measured and analytic covariances on sub-blocks.
 
@@ -48,8 +48,8 @@ The intrinsic alignments (N6), the matched calibration pair (N1) and the shell e
 ## Schedule
 
 - 3–6 Nov: S, A, B; F started (Gate W1).
-- 9–13 Nov: C; D adapter; E light-cones and compression.
-- 16–20 Nov: D nulls; E sub-blocks; G; proposal edits P (Gate W3).
+- 9–13 Nov: C; D adapter on `public_2026` (vector due Fri 6 Nov); E light-cones and compression.
+- 16–20 Nov: D nulls and the import of the `public_2026` fit; E sub-blocks; G; proposal edits P (Gate W3).
 - 23–27 Nov: N1, N6, N7 read in; final numbers; B1 lines.
 
 ## Verification
