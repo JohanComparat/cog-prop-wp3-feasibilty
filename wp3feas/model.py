@@ -73,7 +73,7 @@ def check_stack():
             "a_eps_lo": float(e.a_eps_lo), "a_eps_hi": float(e.a_eps_hi)}
 
 
-def build_public(cfg=None, *, matter="closure", jit=True):
+def build_public(cfg=None, *, matter="closure", jit=True, **kw):
     """``(f, info, theta0, fid)`` of the build at the v1.7.0 defaults (``eps_dpl`` closure)."""
     from ggah_sens_study.fiducial import load_fiducial
     from ggah_sens_study.joint import model as M
@@ -81,7 +81,7 @@ def build_public(cfg=None, *, matter="closure", jit=True):
     check_stack()
     cfg = cfg or public_config()
     fid = load_fiducial()
-    f, info = M.build(fid, cfg, matter=matter, jit=jit)
+    f, info = M.build(fid, cfg, matter=matter, jit=jit, **kw)
     return f, info, np.asarray(M.theta0(fid, cfg)), fid
 
 
