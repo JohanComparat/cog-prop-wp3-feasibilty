@@ -18,8 +18,12 @@ from .provenance import DATA
 
 #: the layout of public_2026: three shells (the third holds only the AGN with
 #: L_X >= 10^43.5 erg/s), every LS11 sample photometric, the AGN as cumulative
-#: thresholds (open bins), the 19 bands of 0.5-2 keV, 13 source bins
+#: thresholds (open bins), the 19 bands of 0.5-2 keV, 13 source bins.
+#: sum_stat divides the HEALPix pixel window out of every C_ℓ and the ACT ILC beam out of
+#: every spectrum with y (tier_ls11_measure.py, tier_shear_cl.py), but leaves the eROSITA PSF
+#: in the X-ray bands: the model beams the X-ray maps only (beams_off=("y",)).
 PUBLIC = dict(
+    beams_off=("y",),
     shells=((0.1, 0.2), (0.2, 0.3), (0.3, 0.6)),
     mstar_edges=(10.0, 10.5, 11.0, 11.5, 11.75),
     colours=("red", "blue"),
