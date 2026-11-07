@@ -39,7 +39,7 @@ DAMP = (0.0, 0.1, 1.0, 10.0)
 
 
 def it_dir(it):
-    return S22.OUT if it == 0 else DATA / f"26_map/it{it}"
+    return S22.OUT if it == 0 else DATA / f"26_map{S22.LAYOUT}/it{it}"
 
 
 def theta_of(it):
@@ -79,7 +79,7 @@ def system(D, slices=None):
 def prior_sigma(names):
     from ggah_sens_study.joint import analysis as AN
 
-    cfg = public_config()
+    cfg = public_config(**S22.LAYOUTS[S22.LAYOUT])
     w = AN.photo_widths(names, cfg, [0.5 * (lo + hi) for lo, hi in cfg.shells])
     return np.array([np.inf if n in FIXED else (w[n] if n in w else (AN.box_sigma(n, cfg.sources) or np.inf))
                      for n in names])
@@ -131,7 +131,7 @@ def cmd_step(a):
     rec.data.update(it=a.it, slices=a.slices, chi2_start=chi2, n_rows=int(sum(s.size for s, _ in blocks)),
                     n_free=int(f.size), fixed=FIXED, exclude=EXCLUDE, damping=out, lambda_used=a.damp,
                     theta=dict(zip(names, th1.tolist())), step_over_prior={n: steps[n] / sp[names.index(n)] for n in steps})
-    print(rec.write(f"26_map_step{a.it}{a.tag}"))
+    print(rec.write(f"26_map_step{a.it}{S22.LAYOUT}{a.tag}"))
 
 
 def cmd_eval(a):
@@ -141,7 +141,7 @@ def cmd_eval(a):
     d = it_dir(a.it)
     th = jnp.asarray(theta_of(a.it))
     t0 = time.time()
-    f, info, _, _ = build_public(public_config(), jit=False, block_pairs=a.block_pairs,
+    f, info, _, _ = build_public(public_config(**S22.LAYOUTS[S22.LAYOUT]), jit=False, block_pairs=a.block_pairs,
                                  block_pairs_los=a.block_pairs_los)
     meta = json.loads((S22.OUT / "meta.json").read_text())
     assert [b["name"] for b in info["blocks"]] == meta["blocks"], "block layout differs from script 22"
@@ -176,7 +176,7 @@ def cmd_score(a):
     n = int(sum(s.size for s, _ in blocks))
     print(f"chi2 {res['start']:.0f} -> {res['new']:.0f} over {n} rows")
     rec.data.update(it=a.it, slices=a.slices, chi2=res, n_rows=n)
-    print(rec.write(f"26_map_score{a.it}"))
+    print(rec.write(f"26_map_score{a.it}{S22.LAYOUT}"))
 
 
 def main(argv=None):
@@ -190,7 +190,9 @@ def main(argv=None):
     ap.add_argument("--slices", nargs="*", default=None, help='slice tags kept ("0", "1", "0+1", "los")')
     ap.add_argument("--tag", default="")
     ap.add_argument("--dry", action="store_true", help="step: do not write theta")
+    ap.add_argument("--layout", default="", choices=list(S22.LAYOUTS))
     a = ap.parse_args(argv)
+    S22.set_layout(a.layout)
     {"step": cmd_step, "eval": cmd_eval, "score": cmd_score}[a.cmd](a)
 
 

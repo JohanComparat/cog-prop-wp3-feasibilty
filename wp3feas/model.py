@@ -85,6 +85,14 @@ def build_public(cfg=None, *, matter="closure", jit=True, **kw):
     return f, info, np.asarray(M.theta0(fid, cfg)), fid
 
 
+def _in_build(name, pair_of):
+    """``name``, or ``name`` without its shell suffix when the build has one shell (no suffix)."""
+    if name is None or any(name in p for p in pair_of):
+        return name
+    base = name.rsplit("@", 1)[0]
+    return base if name.endswith("@0") and any(base in p for p in pair_of) else name
+
+
 def projection(vector, info):
     """``(P, rows)``: the sparse matrix (scipy CSR) from the build's output to the modelled
     rows ``rows`` of ``vector``, and those rows (indices into the vector)."""
@@ -101,7 +109,7 @@ def projection(vector, info):
     for (stat, a, b, survey, part), idx in vector.blocks():
         if stat not in ("cl", "cl_sh"):
             continue
-        A, B = build_name(a), build_name(b or a)
+        A, B = (_in_build(build_name(t), pair_of) for t in (a, b or a))
         if A is None or B is None or (A, B) not in pair_of:
             continue
         base = n_disc + pair_of[(A, B)] * n_ell

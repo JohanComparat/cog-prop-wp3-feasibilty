@@ -37,7 +37,9 @@ def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--model-dir", default=None, help="blocks of D at another point (script 26)")
     ap.add_argument("--tag", default="")
+    ap.add_argument("--layout", default="", choices=list(S22.LAYOUTS))
     a = ap.parse_args(argv)
+    S22.set_layout(a.layout)
     rec = Record(__file__)
     for p in (VECTOR, NZ_FILE, S22.OUT / "meta.json"):
         rec.add_input(p)
