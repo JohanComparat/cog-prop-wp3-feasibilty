@@ -49,7 +49,7 @@ def theta_of(it):
     return np.asarray(json.loads((it_dir(it) / "theta.json").read_text())["theta"])
 
 
-def system(D):
+def system(D, slices=None):
     """``(r, iC blocks, rows)``: the residuals and per-block inverse covariances on the used rows."""
     meta = json.loads((S22.OUT / "meta.json").read_text())
     info = {"discrete": meta["discrete"], "pairs": [tuple(p) for p in meta["pairs"]], "ell": meta["ell"]}
@@ -61,6 +61,9 @@ def system(D):
     fin = (np.isfinite(d) & np.isfinite(m) & np.all(np.isfinite(vec.jk[:, rows]), axis=0)
            & (ell >= S22.SCALE_LMIN))
     key = np.array(["|".join(vec.index[k][r].decode() for k in ("stat", "a", "b", "survey")) for r in rows])
+    tag = np.array(["los" if not t else "+".join(map(str, t)) for t in S22._slice_of(vec, rows)])
+    if slices:
+        fin &= np.isin(tag, slices)
     out = []
     for k in np.unique(key[fin]):
         if k in EXCLUDE:
@@ -89,9 +92,10 @@ def cmd_step(a):
         raise SystemExit("iterations past 1 need the Jacobian at the new point: rerun 22 jac there")
     names = meta["names"]
     th0 = np.asarray(meta["theta0"])
-    P, r, blocks = system(D)
+    P, r, blocks = system(D, a.slices)
     Jd = P @ J
-    free = np.array([n not in FIXED for n in names])
+    used = np.flatnonzero(np.abs(Jd[np.concatenate([s for s, _ in blocks])]).sum(0) > 0)
+    free = np.array([n not in FIXED for n in names]) & np.isin(np.arange(len(names)), used)
     sp = prior_sigma(names)
     A = np.zeros((len(names),) * 2)
     g = np.zeros(len(names))
@@ -119,14 +123,15 @@ def cmd_step(a):
             th1[f] += dx
     d = it_dir(a.it)
     d.mkdir(parents=True, exist_ok=True)
-    (d / "theta.json").write_text(json.dumps({"names": names, "theta": th1.tolist(), "lambda": a.damp}))
+    if not a.dry:
+        (d / "theta.json").write_text(json.dumps({"names": names, "theta": th1.tolist(), "lambda": a.damp}))
     steps = {n: float(th1[i] - th0[i]) for i, n in enumerate(names) if free[i]}
     big = sorted(steps, key=lambda n: -abs(steps[n] / sp[names.index(n)]))[:20]
     print("largest steps (prior sigma):", {n: round(steps[n] / sp[names.index(n)], 2) for n in big})
-    rec.data.update(it=a.it, chi2_start=chi2, n_rows=int(sum(s.size for s, _ in blocks)),
+    rec.data.update(it=a.it, slices=a.slices, chi2_start=chi2, n_rows=int(sum(s.size for s, _ in blocks)),
                     n_free=int(f.size), fixed=FIXED, exclude=EXCLUDE, damping=out, lambda_used=a.damp,
                     theta=dict(zip(names, th1.tolist())), step_over_prior={n: steps[n] / sp[names.index(n)] for n in steps})
-    print(rec.write(f"26_map_step{a.it}"))
+    print(rec.write(f"26_map_step{a.it}{a.tag}"))
 
 
 def cmd_eval(a):
@@ -170,7 +175,7 @@ def cmd_score(a):
         res[tag] = float(sum(r[s] @ iC @ r[s] for s, iC in blocks))
     n = int(sum(s.size for s, _ in blocks))
     print(f"chi2 {res['start']:.0f} -> {res['new']:.0f} over {n} rows")
-    rec.data.update(it=a.it, chi2=res, n_rows=n)
+    rec.data.update(it=a.it, slices=a.slices, chi2=res, n_rows=n)
     print(rec.write(f"26_map_score{a.it}"))
 
 
@@ -182,6 +187,9 @@ def main(argv=None):
     ap.add_argument("--block-pairs", type=int, default=40)
     ap.add_argument("--block-pairs-los", type=int, default=10)
     ap.add_argument("--max-blocks", type=int, default=0)
+    ap.add_argument("--slices", nargs="*", default=None, help='slice tags kept ("0", "1", "0+1", "los")')
+    ap.add_argument("--tag", default="")
+    ap.add_argument("--dry", action="store_true", help="step: do not write theta")
     a = ap.parse_args(argv)
     {"step": cmd_step, "eval": cmd_eval, "score": cmd_score}[a.cmd](a)
 

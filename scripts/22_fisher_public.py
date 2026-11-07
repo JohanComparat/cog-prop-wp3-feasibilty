@@ -31,6 +31,15 @@ from wp3feas.provenance import DATA, Record  # noqa: E402
 from wp3feas.vector import VECTOR, hartlap, jk_cov, load_vector, parse_tracer  # noqa: E402
 
 OUT = DATA / "22_jacobian"
+#: the one-shell layout: z 0.1-0.2 only, no shell copies of the parameters (the model has
+#: no redshift evolution of its own, so each extra shell only adds free offsets)
+LAYOUT = ""
+LAYOUTS = {"": {}, "_s0": {"shells": ((0.1, 0.2),), "spec_mstar_min": ((13.0, 13.0),)}}
+
+
+def set_layout(tag):
+    global OUT, LAYOUT
+    OUT, LAYOUT = DATA / f"22_jacobian{tag}", tag
 SCALE_LMIN = 30.0  # below it the mask couples the multipoles and Limber fails
 KEY = ("S8", "S8_rel", "Omega_m", "sigma8", "h", "log10_eps_agn_p")
 
@@ -42,7 +51,7 @@ def cmd_jac(a):
     OUT.mkdir(parents=True, exist_ok=True)
     stack = check_stack()
     t0 = time.time()
-    cfg = public_config()
+    cfg = public_config(**LAYOUTS[LAYOUT])
     f, info, th0, fid = build_public(cfg, jit=False, block_pairs=a.block_pairs,
                                      block_pairs_los=a.block_pairs_los)
     meta = {"names": list(info["names"]), "theta0": th0.tolist(), "stack": stack,
@@ -142,7 +151,7 @@ def cmd_fisher(a):
 
     fid = load_fiducial()
     T, rep, centre, _ = DC.reported_basis({"names": names, "theta0": meta["theta0"]}, fid)
-    cfg = public_config()
+    cfg = public_config(**LAYOUTS[LAYOUT])
     widths = AN.photo_widths(rep, cfg, [0.5 * (lo + hi) for lo, hi in cfg.shells])
     out = {}
     for g, tags in groups.items():
@@ -157,7 +166,7 @@ def cmd_fisher(a):
                     priors="box + Planck/BBN (h, n_s, Omega_b) + stage4 sources", centre=centre)
     print(json.dumps({g: {k: v for k, v in d["sigma"].items() if k in KEY or k == "S8_rel"}
                       for g, d in out.items()}, indent=1))
-    print(rec.write())
+    print(rec.write(f"22_fisher_public{LAYOUT}"))
 
 
 def main(argv=None):
@@ -166,7 +175,9 @@ def main(argv=None):
     ap.add_argument("--block-pairs", type=int, default=40)
     ap.add_argument("--block-pairs-los", type=int, default=10)
     ap.add_argument("--max-blocks", type=int, default=0, help="blocks per process (0: all)")
+    ap.add_argument("--layout", default="", choices=list(LAYOUTS))
     a = ap.parse_args(argv)
+    set_layout(a.layout)
     {"jac": cmd_jac, "fisher": cmd_fisher}[a.cmd](a)
 
 
