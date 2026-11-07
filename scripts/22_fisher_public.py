@@ -32,7 +32,7 @@ from wp3feas.vector import VECTOR, hartlap, jk_cov, load_vector, parse_tracer  #
 
 OUT = DATA / "22_jacobian"
 SCALE_LMIN = 30.0  # below it the mask couples the multipoles and Limber fails
-KEY = ("S8", "Omega_m", "sigma8", "omega_cdm", "ln10A_s", "log10_eps_agn_p")
+KEY = ("S8", "S8_rel", "Omega_m", "sigma8", "h", "log10_eps_agn_p")
 
 
 def cmd_jac(a):
@@ -132,20 +132,29 @@ def cmd_fisher(a):
         n_used += sel.size
     groups = {"slice0": ["0", "los"], "slice1": ["1", "los"], "slice2": ["2", "los"],
               "joint": list(F_by)}
+    # the reported basis (sigma8 for ln10A_s) and the study's priors: the parameter boxes,
+    # Planck/BBN on h, n_s and Omega_b, the stage-4 source priors (ggah_sens_study.joint)
+    from ggah_sens_study.fiducial import load_fiducial
+    from ggah_sens_study.joint import analysis as AN
+    from ggah_sens_study.joint import decompose as DC
+
+    fid = load_fiducial()
+    T, rep, centre, _ = DC.reported_basis({"names": names, "theta0": meta["theta0"]}, fid)
+    cfg = public_config()
+    widths = AN.photo_widths(rep, cfg, [0.5 * (lo + hi) for lo, hi in cfg.shells])
     out = {}
     for g, tags in groups.items():
-        F = sum(F_by[t] for t in tags if t in F_by)
-        live = np.flatnonzero(np.diag(F) > 0)
-        cov = np.full((len(names), len(names)), np.nan)
-        cov[np.ix_(live, live)] = np.linalg.pinv(F[np.ix_(live, live)])
-        sig = np.sqrt(np.diag(cov))
-        out[g] = {n: float(sig[i]) for i, n in enumerate(names) if n in KEY or g == "joint"}
-        out[g]["n_constrained"] = int(live.size)
+        F = T.T @ sum(F_by[t] for t in tags if t in F_by) @ T
+        sig, _ = AN.constraints_joint(F, rep, centre, meta["config"].get("sources", "stage4"),
+                                      cosmo_raw=fid.raw["cosmology"], widths=widths)
+        out[g] = {"sigma": {n: v for n, v in sig.items() if n in KEY or g == "joint"}}
     rec.data.update(stack=meta["stack"], n_params=len(names), rows_modelled=int(rows.size),
                     rows_used=int(n_used), ell_min=SCALE_LMIN,
                     covariance="jackknife per block, Hartlap, block-diagonal",
-                    sigma=out, theta0=dict(zip(names, meta["theta0"])))
-    print(json.dumps({g: {k: v for k, v in d.items() if k in KEY or k == "n_constrained"} for g, d in out.items()}, indent=1))
+                    sigma=out, theta0=dict(zip(names, meta["theta0"])),
+                    priors="box + Planck/BBN (h, n_s, Omega_b) + stage4 sources", centre=centre)
+    print(json.dumps({g: {k: v for k, v in d["sigma"].items() if k in KEY or k == "S8_rel"}
+                      for g, d in out.items()}, indent=1))
     print(rec.write())
 
 
