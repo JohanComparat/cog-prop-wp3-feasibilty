@@ -5,6 +5,7 @@
     PYTHONPATH=... python scripts/26_map_fit.py eval --it 1 [--max-blocks 20]
     PYTHONPATH=... python scripts/26_map_fit.py score --it 1
 
+``jac --it k`` writes the model and its Jacobian at iterate k (script 22's jac) for the next step.
 ``step`` takes the model and Jacobian at iterate ``it - 1`` (iterate 0: script 22's, at the
 defaults) and solves the damped, prior-regularised normal equations for the step,
 cosmology held fixed (the first pass fits the occupation, AGN, energetics and nuisances).
@@ -86,12 +87,13 @@ def prior_sigma(names):
 
 
 def cmd_step(a):
+    """Iterate ``it``: a damped Gauss-Newton step from iterate ``it - 1`` (prior centred on the defaults)."""
     rec = Record(__file__)
-    meta, D, J = S22._assemble(it_dir(a.it - 1)) if a.it == 1 else (None, None, None)
-    if a.it != 1:
-        raise SystemExit("iterations past 1 need the Jacobian at the new point: rerun 22 jac there")
+    prev = it_dir(a.it - 1)
+    meta, D, J = S22._assemble(prev)
     names = meta["names"]
     th0 = np.asarray(meta["theta0"])
+    x = theta_of(a.it - 1)
     P, r, blocks = system(D, a.slices)
     Jd = P @ J
     used = np.flatnonzero(np.abs(Jd[np.concatenate([s for s, _ in blocks])]).sum(0) > 0)
@@ -108,30 +110,39 @@ def cmd_step(a):
     Pr = np.where(np.isfinite(sp), 1.0 / sp ** 2, 0.0)
     f = np.flatnonzero(free)
     sc = np.where(np.isfinite(sp[f]), sp[f], 1.0)
-    out = []
-    for lam in DAMP:
-        Af = (A[np.ix_(f, f)] + np.diag(Pr[f])) * np.outer(sc, sc)
-        Af += lam * np.eye(f.size)
-        dx = np.linalg.solve(Af, g[f] * sc) * sc  # step from the defaults (prior centred there)
+    prior_now = float(np.sum(Pr[f] * (x[f] - th0[f]) ** 2))
+    gf = g[f] - Pr[f] * (x[f] - th0[f])  # minus half the gradient of chi2 + prior at x
+    out, th1 = [], None
+    for lam in sorted(set(DAMP) | {a.damp}):
+        Af = (A[np.ix_(f, f)] + np.diag(Pr[f])) * np.outer(sc, sc) + lam * np.eye(f.size)
+        dx = np.linalg.solve(Af, gf * sc) * sc
         pred = chi2 - 2 * g[f] @ dx + dx @ A[np.ix_(f, f)] @ dx
-        out.append({"lambda": lam, "chi2_pred": float(pred), "prior": float(np.sum(Pr[f] * dx ** 2)),
-                    "max_pull_prior": float(np.max(np.abs(dx / sc)))})
-        print(f"lambda={lam:5.1f} chi2 {chi2:.0f} -> {pred:.0f} (linear), prior {out[-1]['prior']:.1f}, "
-              f"max step {out[-1]['max_pull_prior']:.2f} prior sigma", flush=True)
+        pri = float(np.sum(Pr[f] * (x[f] + dx - th0[f]) ** 2))
+        out.append({"lambda": lam, "chi2_pred": float(pred), "prior": pri,
+                    "max_offset_prior": float(np.max(np.abs((x[f] + dx - th0[f]) / sc)))})
+        print(f"lambda={lam:5.1f} chi2 {chi2:.0f} -> {pred:.0f} (linear), prior {prior_now:.1f} -> {pri:.1f}, "
+              f"max offset {out[-1]['max_offset_prior']:.2f} prior sigma", flush=True)
         if lam == a.damp:
-            th1 = th0.copy()
+            th1 = x.copy()
             th1[f] += dx
     d = it_dir(a.it)
     d.mkdir(parents=True, exist_ok=True)
     if not a.dry:
         (d / "theta.json").write_text(json.dumps({"names": names, "theta": th1.tolist(), "lambda": a.damp}))
-    steps = {n: float(th1[i] - th0[i]) for i, n in enumerate(names) if free[i]}
-    big = sorted(steps, key=lambda n: -abs(steps[n] / sp[names.index(n)]))[:20]
-    print("largest steps (prior sigma):", {n: round(steps[n] / sp[names.index(n)], 2) for n in big})
-    rec.data.update(it=a.it, slices=a.slices, chi2_start=chi2, n_rows=int(sum(s.size for s, _ in blocks)),
-                    n_free=int(f.size), fixed=FIXED, exclude=EXCLUDE, damping=out, lambda_used=a.damp,
-                    theta=dict(zip(names, th1.tolist())), step_over_prior={n: steps[n] / sp[names.index(n)] for n in steps})
+    off = {n: float((th1[i] - th0[i]) / sp[i]) for i, n in enumerate(names) if free[i]}
+    big = sorted(off, key=lambda n: -abs(off[n]))[:20]
+    print("largest offsets from the defaults (prior sigma):", {n: round(off[n], 2) for n in big})
+    rec.data.update(it=a.it, layout=S22.LAYOUT, slices=a.slices, chi2_start=chi2, prior_start=prior_now,
+                    n_rows=int(sum(s.size for s, _ in blocks)), n_free=int(f.size), fixed=FIXED,
+                    exclude=EXCLUDE, damping=out, lambda_used=a.damp,
+                    theta=dict(zip(names, th1.tolist())), offset_over_prior=off)
     print(rec.write(f"26_map_step{a.it}{S22.LAYOUT}{a.tag}"))
+
+
+def cmd_jac(a):
+    """The model and its Jacobian at iterate ``it`` (script 22's jac), into that iterate's directory."""
+    a.at, a.out = theta_of(a.it), it_dir(a.it)
+    S22.cmd_jac(a)
 
 
 def cmd_eval(a):
@@ -181,7 +192,7 @@ def cmd_score(a):
 
 def main(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=("step", "eval", "score"))
+    ap.add_argument("cmd", choices=("step", "jac", "eval", "score"))
     ap.add_argument("--it", type=int, default=1)
     ap.add_argument("--damp", type=float, default=1.0)
     ap.add_argument("--block-pairs", type=int, default=40)
@@ -193,7 +204,7 @@ def main(argv=None):
     ap.add_argument("--layout", default="", choices=list(S22.LAYOUTS))
     a = ap.parse_args(argv)
     S22.set_layout(a.layout)
-    {"step": cmd_step, "eval": cmd_eval, "score": cmd_score}[a.cmd](a)
+    {"step": cmd_step, "jac": cmd_jac, "eval": cmd_eval, "score": cmd_score}[a.cmd](a)
 
 
 if __name__ == "__main__":

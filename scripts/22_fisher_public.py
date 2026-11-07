@@ -48,7 +48,8 @@ def cmd_jac(a):
     import jax
     import jax.numpy as jnp
 
-    OUT.mkdir(parents=True, exist_ok=True)
+    out = Path(getattr(a, "out", None) or OUT)  # another point: script 26's iterates
+    out.mkdir(parents=True, exist_ok=True)
     stack = check_stack()
     t0 = time.time()
     cfg = public_config(**LAYOUTS[LAYOUT])
@@ -59,14 +60,20 @@ def cmd_jac(a):
             "pairs": [list(p) for p in info["pairs"]], "discrete": list(info["discrete"]),
             "ell": np.asarray(info["ell"]).tolist(), "config": cfg.to_dict(),
             "blocks": [b["name"] for b in info["blocks"]]}
-    (OUT / "meta.json").write_text(json.dumps(meta, indent=1, default=str))
+    at = getattr(a, "at", None)
+    if at is None:
+        (OUT / "meta.json").write_text(json.dumps(meta, indent=1, default=str))
+    else:
+        old = json.loads((OUT / "meta.json").read_text())
+        assert old["blocks"] == meta["blocks"] and old["names"] == meta["names"], "layout differs"
+        th0 = np.asarray(at, float)
     th = jnp.asarray(th0)
     n = th.size
     print(f"{n} parameters, {len(info['pairs'])} pairs, {len(info['blocks'])} blocks, "
           f"built in {time.time() - t0:.1f} s", flush=True)
     done = 0
     for b in info["blocks"]:
-        path = OUT / f"{b['name']}.npz"
+        path = out / f"{b['name']}.npz"
         if path.is_file():
             continue
         if a.max_blocks and done >= a.max_blocks:

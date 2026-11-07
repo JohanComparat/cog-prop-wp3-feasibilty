@@ -8,12 +8,13 @@ R in Mpc/h for dsigma (units as written by sum_stat/scripts/tier_assemble_vector
 
 import re
 from dataclasses import dataclass
+import os
 from pathlib import Path
 
 import h5py
 import numpy as np
 
-VECTOR = Path.home() / "data/legacysurvey/dr11/south/bgsr21s/results/tier_xcorr/vector/tier_ls11_v0.h5"
+VECTOR = Path(os.environ.get("WP3FEAS_VECTOR", Path.home() / "data/legacysurvey/dr11/south/bgsr21s/results/tier_xcorr/vector/tier_ls11_v0.h5"))
 N_SHEAR = {"DES": 4, "KIDS": 5, "HSC": 4}
 SLICES = {(0.1, 0.2): 0, (0.2, 0.3): 1, (0.3, 0.6): 2}  # slice index used in this study
 
