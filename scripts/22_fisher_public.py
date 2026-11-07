@@ -1,7 +1,7 @@
 """Part D, step 2: the Jacobian of the ggah_mod 1.7.0 default model of public_2026 and its Fisher matrix.
 
     source ~/software/ggah_sens_study_wt_v170/local/stack_v170.sh gpu
-    PYTHONPATH=~/software/ggah_sens_study_wt_v170:$PYTHONPATH python scripts/22_fisher_public.py jac [--block-pairs 40]
+    PYTHONPATH=~/software/ggah_sens_study_wt_v170:$PYTHONPATH python scripts/22_fisher_public.py jac [--block-pairs 40] [--block-pairs-los 10]
     PYTHONPATH=... python scripts/22_fisher_public.py fisher
 
 ``jac`` writes, per block of ``joint.model.build`` (``info["blocks"]``), ``D`` (its rows of the
@@ -15,6 +15,7 @@ block-diagonal across blocks (the analytic covariance of Part E replaces it).
 """
 
 import argparse
+import gc
 import json
 import sys
 import time
@@ -42,7 +43,8 @@ def cmd_jac(a):
     stack = check_stack()
     t0 = time.time()
     cfg = public_config()
-    f, info, th0, fid = build_public(cfg, jit=False, block_pairs=a.block_pairs)
+    f, info, th0, fid = build_public(cfg, jit=False, block_pairs=a.block_pairs,
+                                     block_pairs_los=a.block_pairs_los)
     meta = {"names": list(info["names"]), "theta0": th0.tolist(), "stack": stack,
             "n_rows": int(sum(len(b["rows"]) for b in info["blocks"])),
             "pairs": [list(p) for p in info["pairs"]], "discrete": list(info["discrete"]),
@@ -53,10 +55,15 @@ def cmd_jac(a):
     n = th.size
     print(f"{n} parameters, {len(info['pairs'])} pairs, {len(info['blocks'])} blocks, "
           f"built in {time.time() - t0:.1f} s", flush=True)
+    done = 0
     for b in info["blocks"]:
         path = OUT / f"{b['name']}.npz"
         if path.is_file():
             continue
+        if a.max_blocks and done >= a.max_blocks:
+            print("stopping: --max-blocks reached (a fresh process frees the GPU)", flush=True)
+            return
+        done += 1
         t1 = time.time()
         jvp = jax.jit(lambda t, v, g=b["f"]: jax.jvp(g, (t,), (v,)))
         cols, D = [], None
@@ -66,12 +73,16 @@ def cmd_jac(a):
             cols.append(np.asarray(dy))
         np.savez(path, rows=np.asarray(b["rows"]), D=D, J=np.column_stack(cols))
         print(f"  {b['name']}: {len(b['rows'])} rows in {time.time() - t1:.1f} s", flush=True)
+        del jvp, cols, y, dy
+        jax.clear_caches()  # each executable holds its constants on the GPU
+        gc.collect()
     print(f"done in {time.time() - t0:.1f} s")
 
 
 def _assemble():
     meta = json.loads((OUT / "meta.json").read_text())
-    n_rows, n = meta["n_rows"], len(meta["names"])
+    n = len(meta["names"])
+    n_rows = len(meta["discrete"]) + len(meta["pairs"]) * len(meta["ell"])  # blocks overlap
     D, J = np.zeros(n_rows), np.zeros((n_rows, n))
     for name in meta["blocks"]:
         with np.load(OUT / f"{name}.npz") as z:
@@ -142,6 +153,8 @@ def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("cmd", choices=("jac", "fisher"))
     ap.add_argument("--block-pairs", type=int, default=40)
+    ap.add_argument("--block-pairs-los", type=int, default=10)
+    ap.add_argument("--max-blocks", type=int, default=0, help="blocks per process (0: all)")
     a = ap.parse_args(argv)
     {"jac": cmd_jac, "fisher": cmd_fisher}[a.cmd](a)
 
