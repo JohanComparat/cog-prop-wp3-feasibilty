@@ -4,7 +4,7 @@
 
 ## Tracker
 
-*Status: `open`, `running`, `done (date, where)` or `dropped (reason)`. Last update: 2026-11-06 (Part D planned on `tier_ls11_v0.h5`).*
+*Status: `open`, `running`, `done (date, where)` or `dropped (reason)`. Last update: 2026-11-07 (Part D steps 1–3 run, the first MAP step taken).*
 
 | Item | What | Proposal item | Status |
 |---|---|---|---|
@@ -12,7 +12,7 @@
 | A | inputs: layout, row and spectra counts of `S5_public_2031`; what it assumes public for LSST Y3 and Euclid DR2 | I4 | open |
 | B | $\ell_{\max}$ per map and shell at $k = 1, 3, 10$ h/Mpc against the ACT beam, the eROSITA PSF, shear shape noise and shot noise | N8, I11 | open |
 | C | catastrophic photometric-redshift outliers: tolerance on $f_{\rm out}$ at $0.3\sigma$ on $S_8$, and cost when free | Ref. 1 pt 5, Table 3 | open |
-| D | the public data vector `public_2026` (`tier_ls11_v0.h5`, LS DR11 × eRASS1 × ACT DR6 × DES/KiDS/HSC shear) fitted with `ggah_mod` 1.7.0: reader, Fisher per redshift slice, projection of the default model, null tests, scale cuts, MAP, NUTS | I19, I24 | open: the vector was written on 5 Nov; the fits run in the weeks of 9 and 16 Nov |
+| D | the public data vector `public_2026` (`tier_ls11_v0.h5`, LS DR11 × eRASS1 × ACT DR6 × DES/KiDS/HSC shear) fitted with `ggah_mod` 1.7.0: reader, Fisher per redshift slice, projection of the default model, null tests, scale cuts, MAP, NUTS | I19, I24 | running: reader (21), Fisher per slice (22: σ(S8) = 0.0054 joint, block-diagonal jackknife) and default-model projection (23: χ² = 208 869 over 17 748 rows) done 2026-11-07 in `results/`; MAP (26) running; null tests, scale cuts and NUTS open |
 | E | covariance: light-cone count, compression, sub-block validation, one-shell C3 and its five-shell scaling | N11, I12, I27 | open |
 | F | timing of one likelihood value and gradient, and of a NUTS chain for 212 parameters | N10, I13 | open |
 | G | synthesis: `results/wp3_feasibility_summary.json`, the B2 figures, N1, N6, N7 read from `ggah_sens_study` | N1, N6, N7 | open |

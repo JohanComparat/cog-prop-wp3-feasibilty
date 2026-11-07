@@ -79,15 +79,17 @@ def cmd_jac(a):
     print(f"done in {time.time() - t0:.1f} s")
 
 
-def _assemble():
+def _assemble(out=None, jac=True):
+    out = out or OUT
     meta = json.loads((OUT / "meta.json").read_text())
     n = len(meta["names"])
     n_rows = len(meta["discrete"]) + len(meta["pairs"]) * len(meta["ell"])  # blocks overlap
     D, J = np.zeros(n_rows), np.zeros((n_rows, n))
     for name in meta["blocks"]:
-        with np.load(OUT / f"{name}.npz") as z:
+        with np.load(out / f"{name}.npz") as z:
             D[z["rows"]] += z["D"]       # a photometric sample's rows sum the zones' blocks
-            J[z["rows"]] += z["J"]
+            if jac:
+                J[z["rows"]] += z["J"]
     return meta, D, J
 
 

@@ -31,11 +31,17 @@ S22 = importlib.import_module("22_fisher_public")
 PTE_MIN = 0.01
 
 
-def main():
+def main(argv=None):
+    import argparse
+
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--model-dir", default=None, help="blocks of D at another point (script 26)")
+    ap.add_argument("--tag", default="")
+    a = ap.parse_args(argv)
     rec = Record(__file__)
     for p in (VECTOR, NZ_FILE, S22.OUT / "meta.json"):
         rec.add_input(p)
-    meta, D, _ = S22._assemble()
+    meta, D, _ = S22._assemble(Path(a.model_dir) if a.model_dir else None, jac=False)
     info = {"discrete": meta["discrete"], "pairs": [tuple(p) for p in meta["pairs"]], "ell": meta["ell"]}
     vec = load_vector()
     P, rows = projection(vec, info)
@@ -87,7 +93,7 @@ def main():
     print(f"chi2 {chi2_tot:.0f} over {n_tot} rows in {len(blocks)} blocks")
     for b in worst[:15]:
         print(f"  {b['block']:60s} n={b['n']:3d} chi2={b['chi2']:9.1f} A={b['amp']:6.2f} chi2_A={b['chi2_amp']:9.1f}")
-    print(rec.write())
+    print(rec.write(f"23_project_default{a.tag}"))
 
 
 if __name__ == "__main__":
