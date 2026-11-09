@@ -7,7 +7,8 @@
 
 ``jac --it k`` writes the model and its Jacobian at iterate k (script 22's jac) for the next step.
 ``step`` takes the model and Jacobian at iterate ``it - 1`` (iterate 0: script 22's, at the
-defaults) and solves the damped, prior-regularised normal equations for the step,
+defaults) and solves the damped, prior-regularised normal equations, inside the parameter
+ranges and a trust region (an iterate that loses rows or worsens the objective is rejected),
 cosmology held fixed (the first pass fits the occupation, AGN, energetics and nuisances).
 ``eval`` evaluates the full model at the new point block by block (resumable).
 ``score`` gives chi^2 at the new point and the per-block table of script 23.
@@ -36,7 +37,6 @@ from wp3feas.vector import VECTOR, hartlap, jk_cov, load_vector  # noqa: E402
 S22 = importlib.import_module("22_fisher_public")
 FIXED = ("Omega_m", "ln10A_s", "h", "n_s", "Omega_b")
 EXCLUDE = ("cl|y|y|",)
-DAMP = (0.0, 0.1, 1.0, 10.0)
 
 
 def it_dir(it):
@@ -86,57 +86,170 @@ def prior_sigma(names):
                      for n in names])
 
 
+def bounds(names, th0, sp):
+    """``(lo, hi)``: each parameter's range: its ``PARAM_BOX`` (1 per cent of the width inside
+    the edges, always holding the default), else five prior widths about the default."""
+    from ggah_cal.campaign import PARAM_BOX
+    from ggah_sens_study.priors import base_name
+
+    lo, hi = np.full(len(names), -np.inf), np.full(len(names), np.inf)
+    for i, n in enumerate(names):
+        b = base_name(n)
+        if b in PARAM_BOX and "@" not in n:
+            l, h = PARAM_BOX[b]
+            m = 0.01 * (h - l)
+            lo[i], hi[i] = min(l + m, th0[i]), max(h - m, th0[i])
+        elif np.isfinite(sp[i]) and b not in PARAM_BOX:
+            lo[i], hi[i] = th0[i] - 5 * sp[i], th0[i] + 5 * sp[i]
+    return lo, hi
+
+
+def shell_limits(names, x, lo, hi):
+    """``(lo, hi)`` with each shell offset ``p@s`` limited so that ``p + p@s`` stays in p's range."""
+    lo, hi = lo.copy(), hi.copy()
+    for i, n in enumerate(names):
+        if "@" in n and n.split("@")[0] in names:
+            g = names.index(n.split("@")[0])
+            lo[i], hi[i] = lo[g] - x[g], hi[g] - x[g]
+    return lo, hi
+
+
+def point(k, slices):
+    """The model, Jacobian, residuals and blocks of iterate ``k``."""
+    meta, D, J = S22._assemble(it_dir(k))
+    P, r, blocks = system(D, slices)
+    return meta, P @ J, r, blocks, theta_of(k)
+
+
+def objective(k, r, blocks, x, th0, sp):
+    pr = np.where(np.isfinite(sp), 1.0 / sp ** 2, 0.0)
+    c = float(sum(r[s] @ iC @ r[s] for s, iC in blocks))
+    o = {"chi2": c, "prior": float(np.sum(pr * (x - th0) ** 2)), "n_rows": int(sum(s.size for s, _ in blocks))}
+    (it_dir(k) / "objective.json").write_text(json.dumps(o))
+    return o
+
+
+def _with(x, i, v):
+    y = x.copy()
+    y[i] = v
+    return y
+
+
+def probe():
+    """``ok(theta)``: whether the first block of every shell and of the line of sight is finite."""
+    import jax
+    import jax.numpy as jnp
+
+    _, info, _, _ = build_public(public_config(**S22.LAYOUTS[S22.LAYOUT]), jit=False,
+                                 block_pairs=40, block_pairs_los=10)
+    first = {}
+    for b in info["blocks"]:
+        first.setdefault(b["name"].split(".")[0], b)
+    fns = [jax.jit(b["f"]) for b in first.values()]
+    print("probe blocks:", [b["name"] for b in first.values()], flush=True)
+    return lambda th: all(bool(np.all(np.isfinite(np.asarray(g(jnp.asarray(th)))))) for g in fns)
+
+
 def cmd_step(a):
-    """Iterate ``it``: a damped Gauss-Newton step from iterate ``it - 1`` (prior centred on the defaults)."""
+    """Iterate ``it``: a bounded, trust-limited Gauss-Newton step, from iterate ``it - 1`` if it
+    improved the objective on all the rows, else from its base with half the trust region."""
+    from scipy.optimize import lsq_linear
+
     rec = Record(__file__)
-    prev = it_dir(a.it - 1)
-    meta, D, J = S22._assemble(prev)
+    k = a.it - 1
+    meta, Jd, r, blocks, x = point(k, a.slices)
     names = meta["names"]
     th0 = np.asarray(meta["theta0"])
-    x = theta_of(a.it - 1)
-    P, r, blocks = system(D, a.slices)
-    Jd = P @ J
-    used = np.flatnonzero(np.abs(Jd[np.concatenate([s for s, _ in blocks])]).sum(0) > 0)
-    free = np.array([n not in FIXED for n in names]) & np.isin(np.arange(len(names)), used)
     sp = prior_sigma(names)
+    o = objective(k, r, blocks, x, th0, sp)
+    trust, status, base = a.trust, "start", k
+    if k >= 1:
+        h = json.loads((it_dir(k) / "theta.json").read_text())
+        ob = json.loads((it_dir(h["base"]) / "objective.json").read_text())
+        ok = (o["n_rows"] == ob["n_rows"] and o["chi2"] + o["prior"] < ob["chi2"] + ob["prior"])
+        status = "accepted" if ok else "rejected"
+        print(f"iterate {k}: {status}: chi2 + prior {o['chi2'] + o['prior']:.1f} on {o['n_rows']} rows, "
+              f"base {h['base']}: {ob['chi2'] + ob['prior']:.1f} on {ob['n_rows']} rows", flush=True)
+        trust = min(h["trust"] * 1.5, a.trust) if ok else h["trust"] / 2
+        if not ok:
+            base = h["base"]
+            meta, Jd, r, blocks, x = point(base, a.slices)
+            o = ob
+    used_rows = np.concatenate([s for s, _ in blocks])
+    if not (np.all(np.isfinite(Jd[used_rows])) and np.all(np.isfinite(r[used_rows]))):
+        raise RuntimeError(f"iterate {base}: non-finite model or Jacobian on the used rows")
+    used = np.flatnonzero(np.abs(Jd[used_rows]).sum(0) > 0)
+    free = np.array([n not in FIXED for n in names]) & np.isin(np.arange(len(names)), used)
     A = np.zeros((len(names),) * 2)
     g = np.zeros(len(names))
-    chi2 = 0.0
     for sel, iC in blocks:
         Jb = Jd[sel]
         A += Jb.T @ iC @ Jb
         g += Jb.T @ iC @ r[sel]
-        chi2 += float(r[sel] @ iC @ r[sel])
     Pr = np.where(np.isfinite(sp), 1.0 / sp ** 2, 0.0)
     f = np.flatnonzero(free)
     sc = np.where(np.isfinite(sp[f]), sp[f], 1.0)
-    prior_now = float(np.sum(Pr[f] * (x[f] - th0[f]) ** 2))
-    gf = g[f] - Pr[f] * (x[f] - th0[f])  # minus half the gradient of chi2 + prior at x
-    out, th1 = [], None
-    for lam in sorted(set(DAMP) | {a.damp}):
-        Af = (A[np.ix_(f, f)] + np.diag(Pr[f])) * np.outer(sc, sc) + lam * np.eye(f.size)
-        dx = np.linalg.solve(Af, gf * sc) * sc
-        pred = chi2 - 2 * g[f] @ dx + dx @ A[np.ix_(f, f)] @ dx
-        pri = float(np.sum(Pr[f] * (x[f] + dx - th0[f]) ** 2))
-        out.append({"lambda": lam, "chi2_pred": float(pred), "prior": pri,
-                    "max_offset_prior": float(np.max(np.abs((x[f] + dx - th0[f]) / sc)))})
-        print(f"lambda={lam:5.1f} chi2 {chi2:.0f} -> {pred:.0f} (linear), prior {prior_now:.1f} -> {pri:.1f}, "
-              f"max offset {out[-1]['max_offset_prior']:.2f} prior sigma", flush=True)
-        if lam == a.damp:
-            th1 = x.copy()
-            th1[f] += dx
+    gf = (g[f] - Pr[f] * (x[f] - th0[f])) * sc  # minus half the gradient at x, in prior widths
+    H = (A[np.ix_(f, f)] + np.diag(Pr[f])) * np.outer(sc, sc) + a.damp * np.eye(f.size)
+    w, V = np.linalg.eigh(H)
+    keep = w > w.max() * 1e-14
+    R, y = (V[:, keep] * np.sqrt(w[keep])) @ V[:, keep].T, (V[:, keep] / np.sqrt(w[keep])) @ (V[:, keep].T @ gf)
+    lo, hi = shell_limits(names, x, *bounds(names, th0, sp))
+
+    def solve(frozen, tr):
+        lb = np.minimum(np.maximum((lo[f] - x[f]) / sc, -tr), 0.0)
+        ub = np.maximum(np.minimum((hi[f] - x[f]) / sc, tr), 0.0)
+        for j, i in enumerate(f):
+            if i in frozen:
+                lb[j], ub[j] = -1e-12, 1e-12
+        sol = lsq_linear(R, y, bounds=(lb, ub), method="bvls", max_iter=2000)
+        th = x.copy()
+        th[f] += sol.x * sc
+        return sol, lb, ub, th
+
+    # the ranges are not enough: the gas profiles' slopes depend on mass, and their finite
+    # region couples parameters, so the candidate is tested on the compiled probe blocks
+    ok_at = probe()
+    if not ok_at(x):
+        raise RuntimeError(f"iterate {base}: the probe blocks are not finite at the starting point")
+    frozen = set()
+    for _ in range(10):
+        sol, lb, ub, th1 = solve(frozen, trust)
+        if ok_at(th1):
+            break
+        new = [i for i in f if i not in frozen and th1[i] != x[i] and not ok_at(_with(x, i, th1[i]))]
+        print("not finite: frozen", [names[i] for i in new] or f"none alone, trust {trust / 2:.3g}", flush=True)
+        if new:
+            frozen |= set(new)
+        else:
+            trust /= 2
+    else:
+        raise RuntimeError("no finite step found")
+    dx = sol.x * sc
+    Af = A[np.ix_(f, f)]
+    pred = o["chi2"] - 2 * g[f] @ dx + dx @ Af @ dx
+    pri = float(np.sum(Pr * (th1 - th0) ** 2))
+    bad = [names[i] for i in f if not lo[i] - 1e-9 <= th1[i] <= hi[i] + 1e-9]
+    if bad:
+        raise RuntimeError(f"step leaves the ranges of {bad}")
+    frozen_names = [names[i] for i in sorted(frozen)]
+    n_lim = int(np.sum(np.isclose(sol.x, lb) | np.isclose(sol.x, ub)))
+    print(f"from iterate {base}: chi2 {o['chi2']:.0f} -> {pred:.0f} (linear) on {o['n_rows']} rows, prior "
+          f"{o['prior']:.1f} -> {pri:.1f}, trust {trust:.3g}, {n_lim} of {f.size} parameters at a limit", flush=True)
     d = it_dir(a.it)
     d.mkdir(parents=True, exist_ok=True)
     if not a.dry:
-        (d / "theta.json").write_text(json.dumps({"names": names, "theta": th1.tolist(), "lambda": a.damp}))
+        (d / "theta.json").write_text(json.dumps({"names": names, "theta": th1.tolist(), "lambda": a.damp,
+                                                  "trust": float(trust), "base": int(base)}))
     off = {n: float((th1[i] - th0[i]) / sp[i]) for i, n in enumerate(names) if free[i]}
     big = sorted(off, key=lambda n: -abs(off[n]))[:20]
     print("largest offsets from the defaults (prior sigma):", {n: round(off[n], 2) for n in big})
-    rec.data.update(it=a.it, layout=S22.LAYOUT, slices=a.slices, chi2_start=chi2, prior_start=prior_now,
-                    n_rows=int(sum(s.size for s, _ in blocks)), n_free=int(f.size), fixed=FIXED,
-                    exclude=EXCLUDE, damping=out, lambda_used=a.damp,
-                    theta=dict(zip(names, th1.tolist())), offset_over_prior=off)
+    rec.data.update(it=a.it, layout=S22.LAYOUT, slices=a.slices, previous_status=status, base=int(base),
+                    chi2_base=o["chi2"], prior_base=o["prior"], n_rows=o["n_rows"], n_free=int(f.size),
+                    chi2_pred=float(pred), prior_new=pri, trust=float(trust), n_at_limit=n_lim, frozen_not_finite=frozen_names, fixed=FIXED,
+                    exclude=EXCLUDE, lambda_used=a.damp, theta=dict(zip(names, th1.tolist())), offset_over_prior=off)
     print(rec.write(f"26_map_step{a.it}{S22.LAYOUT}{a.tag}"))
+    print("done in step")  # cc/gpu.sbatch reruns a command until it prints this
 
 
 def cmd_jac(a):
@@ -195,6 +308,7 @@ def main(argv=None):
     ap.add_argument("cmd", choices=("step", "jac", "eval", "score"))
     ap.add_argument("--it", type=int, default=1)
     ap.add_argument("--damp", type=float, default=1.0)
+    ap.add_argument("--trust", type=float, default=1.0, help="largest change of a parameter per step, in prior widths")
     ap.add_argument("--block-pairs", type=int, default=40)
     ap.add_argument("--block-pairs-los", type=int, default=10)
     ap.add_argument("--max-blocks", type=int, default=0)

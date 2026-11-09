@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # From the laptop: send this repository and ggah_sens_study (branch rerun-v170; git archives
 # of their committed HEADs, each with a DEPLOYED_FROM), the vector public_2026, its n(z) file,
-# the layouts of script 22 (meta.json) and the iterates of script 26 (theta.json) to CC-IN2P3.
+# the Jacobians at the defaults of script 22 to CC-IN2P3.
 # ggah_mod, ggah_cal, emu_pk and emu_hmf are the 1.7.0 stack's (software_v170, same pins).
 #
 #     cc/deploy.sh
@@ -26,7 +26,7 @@ git -C "$ROOT" rev-parse --short HEAD > "$STAGE/cog-prop-wp3-feasibilty/DEPLOYED
 git -C "$SENS" rev-parse --short HEAD > "$STAGE/ggah_sens_study/DEPLOYED_FROM"
 cp "$STAGE/ggah_sens_study/DEPLOYED_FROM" "$STAGE/ggah_sens_study/.sync_stamp"
 rm -f "$STAGE/ggah_sens_study/CONTINUE.md"
-(cd "$D" && find . -path "./22_jacobian*/meta.json" -o -path "./26_map*/it*/theta.json" -o -name "public_2026_nz.npz" \
+(cd "$D" && find . -path "./22_jacobian*/meta.json" -o -path "./22_jacobian*/*.npz" -o -name "public_2026_nz.npz" \
     | cpio -pdm --quiet "$STAGE/data")
 w="cla""ude"
 hits=$( { grep -rilI "$w" "$STAGE" || true; find "$STAGE" -iname "*$w*" || true; } )
