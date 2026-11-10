@@ -210,11 +210,171 @@ def cmd_abundance(a):
     print(rec.write("20_vector_audit_abundance"))
 
 
+class Linear:
+    """Linear theory in h units: Eisenstein & Hu (1998) no-wiggle P(k), sigma8-normalised,
+    growth by the integral of Heath (1977); xi, w_p and Limber C_ell of a tracer with b = 1.
+    sigma8 cancels in every ratio this script reports."""
+
+    def __init__(self, h=H0 / 100, om=OM, ob=0.0486, ns=0.9667, s8=0.81):
+        self.h, self.om, self.ob, self.ns = h, om, ob, ns
+        self.k = np.logspace(-4, 2, 3000)
+        p = self.k ** ns * self._t(self.k) ** 2
+        x = self.k * 8.0
+        w = 3 * (np.sin(x) - x * np.cos(x)) / x ** 3
+        s2 = np.trapezoid(p * w ** 2 * self.k ** 3, np.log(self.k)) / (2 * np.pi ** 2)
+        self.p0 = p * s8 ** 2 / s2
+        self.zg = np.linspace(0, 1.5, 1501)
+        ez = self.E(self.zg)
+        a = 1 / (1 + self.zg)
+        integ = np.array([np.trapezoid(1 / (np.linspace(1e-4, ai, 400) * self.E(1 / np.linspace(1e-4, ai, 400) - 1)) ** 3,
+                                       np.linspace(1e-4, ai, 400)) for ai in a])
+        d = 2.5 * om * ez * integ
+        self.D = d / d[0]
+        self.chi = 2997.92458 * np.concatenate([[0], np.cumsum(0.5 * (1 / ez[1:] + 1 / ez[:-1]) * np.diff(self.zg))])
+
+    def E(self, z):
+        return np.sqrt(self.om * (1 + z) ** 3 + 1 - self.om)
+
+    def _t(self, k):
+        om, ob, h = self.om, self.ob, self.h
+        omh2, f = om * h * h, ob / om
+        s = 44.5 * np.log(9.83 / omh2) / np.sqrt(1 + 10 * (ob * h * h) ** 0.75)
+        al = 1 - 0.328 * np.log(431 * omh2) * f + 0.38 * np.log(22.3 * omh2) * f ** 2
+        g = om * h * (al + (1 - al) / (1 + (0.43 * k * h * s) ** 4))
+        q = k * (2.7255 / 2.7) ** 2 / g
+        l0, c0 = np.log(2 * np.e + 1.8 * q), 14.2 + 731 / (1 + 62.5 * q)
+        return l0 / (l0 + c0 * q * q)
+
+    def pk(self, k, z):
+        return np.interp(np.log(k), np.log(self.k), self.p0) * np.interp(z, self.zg, self.D) ** 2
+
+    def wp(self, rp, z, pi_max):
+        """w_p [Mpc/h] at rp [Mpc/h] for b = 1, from xi by a damped spherical Bessel transform."""
+        r = np.logspace(-1, np.log10(np.hypot(rp.max(), pi_max)) + 0.05, 600)
+        pkz = self.pk(self.k, z) * np.exp(-(self.k / 10) ** 2)
+        xi = np.array([np.trapezoid(self.k ** 3 * pkz * np.sinc(self.k * ri / np.pi), np.log(self.k))
+                       for ri in r]) / (2 * np.pi ** 2)
+        pi = np.linspace(0, pi_max, 800)
+        return np.array([2 * np.trapezoid(np.interp(np.hypot(x, pi), r, xi), pi) for x in rp])
+
+    def cl(self, ell, za, na, zb=None, nb=None):
+        """Limber C_ell of two tracers with b = 1 and normalised n(z)."""
+        z = self.zg[1:]
+        n1 = np.interp(z, za, na, left=0, right=0)
+        n2 = n1 if zb is None else np.interp(z, zb, nb, left=0, right=0)
+        chi = self.chi[1:]
+        hz = self.E(z) / 2997.92458
+        out = []
+        for l in np.atleast_1d(ell):
+            out.append(np.trapezoid(hz * n1 * n2 / chi ** 2 * self.pk((l + 0.5) / chi, z), z))
+        return np.array(out)
+
+
+RP_LIN = (10.0, 30.0)     # Mpc (the vector's unit, h = 0.6774) for the w_p bias
+PI_MAX = 100.0            # Mpc, sum_stat's w_p
+
+
+def cmd_wp(a):
+    """Linear bias of every slice-0 galaxy and AGN sample from w_p (10-30 Mpc), from the data
+    C_ell (30 <= ell <= 200, Limber with the n(z) the model uses) and from the default model's
+    C_ell; the AGN from their crosses with the reference galaxy sample as well."""
+    from wp3feas.model import NZ_FILE, _in_build
+    from wp3feas.nz import build_name
+
+    rec = Record(__file__)
+    d22 = DATA / "22_jacobian_s0"
+    for p in (VECTOR, NZ_FILE, d22 / "meta.json"):
+        rec.add_input(p)
+    vec = load_vector()
+    L = Linear()
+    h = L.h
+    zeff = 0.15
+    gal, agn, _ = slice0(vec)
+    blocks = {(k[0], frozenset((k[1], k[2] or k[1]))): i for k, i in vec.blocks()}
+    nz = np.load(NZ_FILE)
+    meta = json.loads((d22 / "meta.json").read_text())
+    n_disc, ell_m = len(meta["discrete"]), np.asarray(meta["ell"])
+    pair_of = {}
+    for i, (p, q) in enumerate(meta["pairs"]):
+        pair_of[(p, q)] = pair_of[(q, p)] = i
+    D = np.zeros(n_disc + len(meta["pairs"]) * ell_m.size)
+    for b in meta["blocks"]:
+        with np.load(d22 / f"{b}.npz") as z:
+            D[z["rows"]] += z["D"]
+
+    def b2_wp(x, y):
+        idx = blocks.get(("wp", frozenset((x, y))))
+        if idx is None:
+            return None
+        rp = vec.index["x"][idx]
+        s = idx[(rp >= RP_LIN[0]) & (rp <= RP_LIN[1])]
+        t = L.wp(vec.index["x"][s] * h, zeff, PI_MAX * h) / h  # back to Mpc
+        num = lambda v: float(np.sum(v * t) / np.sum(t * t))
+        return num(vec.data[s]), np.array([num(j) for j in vec.jk[:, s]])
+
+    def b2_cl(x, y):
+        idx = blocks.get(("cl", frozenset((x, y))))
+        bx, by = build_name(x), build_name(y)
+        if idx is None or bx is None or by is None:
+            return None
+        ell = vec.index["x"][idx]
+        s = idx[(ell >= LIN[0]) & (ell <= LIN[1])]
+        ls = vec.index["x"][s]
+        t = L.cl(ls, nz[f"{bx}.z"], nz[f"{bx}.nz"], nz[f"{by}.z"], nz[f"{by}.nz"])
+        num = lambda v: float(np.sum(v * t) / np.sum(t * t))
+        A, B = _in_build(bx, pair_of), _in_build(by, pair_of)
+        mod = None
+        if (A, B) in pair_of:
+            j = n_disc + pair_of[(A, B)] * ell_m.size
+            cm = np.interp(np.log(ls), np.log(ell_m), D[j:j + ell_m.size])
+            mod = num(cm)
+        return num(vec.data[s]), np.array([num(j) for j in vec.jk[:, s]]), mod
+
+    def sq(v, j):
+        with np.errstate(invalid="ignore"):
+            return float(np.sign(v) * np.sqrt(abs(v))), jk_sigma(np.sign(j) * np.sqrt(np.abs(j)))
+
+    ref = next(n for n in gal if n.startswith(REF))
+    out = {}
+    print(f"{'sample':45s} {'b_wp':>12s} {'b_cl data':>12s} {'b_cl model':>10s}  cl/wp  model/data")
+    for x in gal + agn:
+        row = {}
+        w, c = b2_wp(x, x), b2_cl(x, x)
+        if w:
+            row["b_wp"], row["b_wp_sigma"] = sq(*w)
+        if c:
+            row["b_cl"], row["b_cl_sigma"] = sq(c[0], c[1])
+            if c[2] is not None:
+                row["b_cl_model"] = sq(c[2], np.array([c[2]]))[0]
+        if x in agn:  # through the cross with the reference galaxies: b_A = b_gA^2 / b_g
+            wx, wr, cx, cr = b2_wp(x, ref), b2_wp(ref, ref), b2_cl(x, ref), b2_cl(ref, ref)
+            if wx and wr:
+                row["b_wp_cross"] = wx[0] / np.sqrt(wr[0])
+                row["b_wp_cross_sigma"] = jk_sigma(wx[1] / np.sqrt(np.abs(wr[1])))
+            if cx and cr:
+                row["b_cl_cross"] = cx[0] / np.sqrt(cr[0])
+                row["b_cl_cross_sigma"] = jk_sigma(cx[1] / np.sqrt(np.abs(cr[1])))
+                if cx[2] is not None and cr[2] is not None:
+                    row["b_cl_cross_model"] = cx[2] / np.sqrt(cr[2])
+        out[short(x)] = row
+        f = lambda k: f"{row[k]:6.2f}+-{row[k + '_sigma']:4.2f}" if k in row else " " * 12
+        g = row.get("b_cl_model")
+        print(f"{short(x):45s} {f('b_wp')} {f('b_cl')} {g if g is None else round(g, 2)!s:>10s}  "
+              f"{row['b_cl'] / row['b_wp'] if 'b_cl' in row and 'b_wp' in row else float('nan'):5.2f}  "
+              f"{(g / row['b_cl']) ** 2 if g and 'b_cl' in row else float('nan'):5.2f}")
+        if x in agn:
+            print(f"{'   via the cross with ' + short(ref)[5:]:45s} {f('b_wp_cross')} {f('b_cl_cross')} "
+                  f"{row.get('b_cl_cross_model', float('nan')):10.2f}")
+    rec.data.update(z_eff=zeff, rp_range_mpc=list(RP_LIN), pi_max_mpc=PI_MAX, ell_range=list(LIN),
+                    pk="Eisenstein-Hu no-wiggle, sigma8 0.81 (cancels in the ratios)", bias=out)
+    print(rec.write("20_vector_audit_wp"))
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=("data", "abundance"))
+    ap.add_argument("cmd", choices=("data", "abundance", "wp"))
     a = ap.parse_args(argv)
-    {"data": cmd_data, "abundance": cmd_abundance}[a.cmd](a)
+    {"data": cmd_data, "abundance": cmd_abundance, "wp": cmd_wp}[a.cmd](a)
 
 
 if __name__ == "__main__":
