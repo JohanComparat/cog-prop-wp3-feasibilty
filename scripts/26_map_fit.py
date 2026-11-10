@@ -5,6 +5,9 @@
     PYTHONPATH=... python scripts/26_map_fit.py eval --it 1 [--max-blocks 20]
     PYTHONPATH=... python scripts/26_map_fit.py score --it 1
 
+``search --it k`` evaluates the model alone at fractions 1, 1/2, 1/4, 1/8 of step k and keeps
+the best one that lowers chi^2 + prior (else the chain stops), so no Jacobian is spent on a
+rejected point.
 ``jac --it k`` writes the model and its Jacobian at iterate k (script 22's jac) for the next step.
 ``step`` takes the model and Jacobian at iterate ``it - 1`` (iterate 0: script 22's, at the
 defaults) and solves the damped, prior-regularised normal equations, inside the parameter
@@ -157,6 +160,10 @@ def cmd_step(a):
 
     rec = Record(__file__)
     k = a.it - 1
+    if k >= 1 and json.loads((it_dir(k) / "theta.json").read_text()).get("stop"):
+        _stop_forward(k, a.it)
+        print("done in step")
+        return
     meta, Jd, r, blocks, x = point(k, a.slices)
     names = meta["names"]
     th0 = np.asarray(meta["theta0"])
@@ -240,7 +247,8 @@ def cmd_step(a):
     d.mkdir(parents=True, exist_ok=True)
     if not a.dry:
         (d / "theta.json").write_text(json.dumps({"names": names, "theta": th1.tolist(), "lambda": a.damp,
-                                                  "trust": float(trust), "base": int(base)}))
+                                                  "trust": float(trust), "base": int(base),
+                                                  "slices": a.slices}))
     off = {n: float((th1[i] - th0[i]) / sp[i]) for i, n in enumerate(names) if free[i]}
     big = sorted(off, key=lambda n: -abs(off[n]))[:20]
     print("largest offsets from the defaults (prior sigma):", {n: round(off[n], 2) for n in big})
@@ -252,8 +260,104 @@ def cmd_step(a):
     print("done in step")  # cc/gpu.sbatch reruns a command until it prints this
 
 
+def _stop_forward(k, it):
+    """Carry the stop of iterate ``k`` (no fraction of its step improved) to iterate ``it``."""
+    d = it_dir(it)
+    d.mkdir(parents=True, exist_ok=True)
+    h = json.loads((it_dir(k) / "theta.json").read_text())
+    (d / "theta.json").write_text(json.dumps({**h, "stop": h["stop"]}))
+    print(f"iterate {k} stopped the chain ({h['stop']}): nothing to do", flush=True)
+
+
+FRACTIONS = (1.0, 0.5, 0.25, 0.125)
+
+
+def cmd_search(a):
+    """A line search along the step of iterate ``it``: the model alone (no Jacobian) at the
+    fractions ``FRACTIONS`` of the step, each block compiled once; the best fraction that
+    lowers chi^2 + prior on the base's rows becomes iterate ``it``, else the chain stops."""
+    import jax
+    import jax.numpy as jnp
+
+    d = it_dir(a.it)
+    h = json.loads((d / "theta.json").read_text())
+    if h.get("stop"):
+        print(f"iterate {a.it} already stopped ({h['stop']})")
+        print("done in search")
+        return
+    if "search" in h:
+        print(f"iterate {a.it}: line search already done")
+        print("done in search")
+        return
+    sd = d / "search"
+    sd.mkdir(exist_ok=True)
+    xb, x1 = theta_of(h["base"]), np.asarray(h["theta"])
+    pts = [xb + t * (x1 - xb) for t in FRACTIONS]
+    t0 = time.time()
+    _, info, _, _ = build_public(public_config(**S22.LAYOUTS[S22.LAYOUT]), jit=False, block_pairs=a.block_pairs,
+                                 block_pairs_los=a.block_pairs_los)
+    meta = json.loads((S22.OUT / "meta.json").read_text())
+    assert [b["name"] for b in info["blocks"]] == meta["blocks"], "block layout differs from script 22"
+    done = 0
+    for b in info["blocks"]:
+        path = sd / f"{b['name']}.npz"
+        if path.is_file():
+            continue
+        if a.max_blocks and done >= a.max_blocks:
+            print("stopping: --max-blocks reached", flush=True)
+            return
+        done += 1
+        t1 = time.time()
+        g = jax.jit(b["f"])
+        D = np.stack([np.asarray(g(jnp.asarray(p))) for p in pts])
+        np.savez(path, rows=np.asarray(b["rows"]), D=D)
+        print(f"  {b['name']}: {time.time() - t1:.1f} s", flush=True)
+        del g
+        jax.clear_caches()
+        gc.collect()
+    # all blocks done: the objective at each fraction
+    rec = Record(__file__)
+    n_rows = len(meta["discrete"]) + len(meta["pairs"]) * len(meta["ell"])
+    D = np.zeros((len(FRACTIONS), n_rows))
+    for name in meta["blocks"]:
+        with np.load(sd / f"{name}.npz") as z:
+            D[:, z["rows"]] += z["D"]
+    th0 = np.asarray(meta["theta0"])
+    sp = prior_sigma(meta["names"])
+    pr = np.where(np.isfinite(sp), 1.0 / sp ** 2, 0.0)
+    ob = json.loads((it_dir(h["base"]) / "objective.json").read_text())
+    res = []
+    for t, p, Dt in zip(FRACTIONS, pts, D):
+        _, r, blocks = system(Dt, h.get("slices"))
+        n = int(sum(s.size for s, _ in blocks))
+        c = float(sum(r[s] @ iC @ r[s] for s, iC in blocks))
+        res.append({"fraction": t, "chi2": c, "prior": float(np.sum(pr * (p - th0) ** 2)), "n_rows": n})
+        print(f"fraction {t:5.3f}: chi2 {c:.1f} + prior {res[-1]['prior']:.1f} on {n} rows "
+              f"(base {h['base']}: {ob['chi2'] + ob['prior']:.1f} on {ob['n_rows']})", flush=True)
+    good = [q for q in res if q["n_rows"] == ob["n_rows"] and np.isfinite(q["chi2"])
+            and q["chi2"] + q["prior"] < ob["chi2"] + ob["prior"]]
+    if good:
+        q = min(good, key=lambda q: q["chi2"] + q["prior"])
+        i = FRACTIONS.index(q["fraction"])
+        h.update(theta=pts[i].tolist(), trust=h["trust"] * q["fraction"], search=res, fraction=q["fraction"])
+        print(f"iterate {a.it}: fraction {q['fraction']} kept, chi2 + prior {q['chi2'] + q['prior']:.1f}")
+    else:
+        h.update(stop=f"no fraction of the step from iterate {h['base']} improves chi2 + prior", search=res)
+        print(f"iterate {a.it}: {h['stop']}")
+    (d / "theta.json").write_text(json.dumps(h))
+    rec.data.update(it=a.it, layout=S22.LAYOUT, base=h["base"], base_objective=ob, search=res,
+                    fraction=h.get("fraction"), stop=h.get("stop"))
+    print(rec.write(f"26_map_search{a.it}{S22.LAYOUT}{a.tag}"))
+    print(f"done in {time.time() - t0:.1f} s")
+
+
 def cmd_jac(a):
     """The model and its Jacobian at iterate ``it`` (script 22's jac), into that iterate's directory."""
+    h = json.loads((it_dir(a.it) / "theta.json").read_text())
+    if h.get("stop"):
+        print(f"iterate {a.it} stopped the chain ({h['stop']}): no Jacobian")
+        print("done in jac")
+        return
     a.at, a.out = theta_of(a.it), it_dir(a.it)
     S22.cmd_jac(a)
 
@@ -305,7 +409,7 @@ def cmd_score(a):
 
 def main(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=("step", "jac", "eval", "score"))
+    ap.add_argument("cmd", choices=("step", "search", "jac", "eval", "score"))
     ap.add_argument("--it", type=int, default=1)
     ap.add_argument("--damp", type=float, default=1.0)
     ap.add_argument("--trust", type=float, default=1.0, help="largest change of a parameter per step, in prior widths")
@@ -318,7 +422,7 @@ def main(argv=None):
     ap.add_argument("--layout", default="", choices=list(S22.LAYOUTS))
     a = ap.parse_args(argv)
     S22.set_layout(a.layout)
-    {"step": cmd_step, "jac": cmd_jac, "eval": cmd_eval, "score": cmd_score}[a.cmd](a)
+    {"step": cmd_step, "search": cmd_search, "jac": cmd_jac, "eval": cmd_eval, "score": cmd_score}[a.cmd](a)
 
 
 if __name__ == "__main__":
