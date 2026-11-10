@@ -23,6 +23,7 @@ import argparse
 import gc
 import importlib
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -43,7 +44,8 @@ EXCLUDE = ("cl|y|y|",)
 
 
 def it_dir(it):
-    return S22.OUT if it == 0 else DATA / f"26_map{S22.LAYOUT}/it{it}"
+    # WP3FEAS_MAP_TAG keeps a second chain (another damping, another machine) in its own directory
+    return S22.OUT if it == 0 else DATA / f"26_map{S22.LAYOUT}{os.environ.get('WP3FEAS_MAP_TAG', '')}/it{it}"
 
 
 def theta_of(it):
