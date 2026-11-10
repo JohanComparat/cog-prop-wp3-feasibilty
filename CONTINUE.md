@@ -23,6 +23,10 @@
   The data C_ℓ autos are 1.8–2.6 times the model (RED, flat from ℓ = 30 to 2000); a top-hat n(z) on the slice, the narrowest possible, removes only a factor 1.2–1.4.
   Slice-0 × slice-1 ALL crosses: r = 0.05–0.14 on 30 ≤ ℓ ≤ 200.
 
+- D1 V3: data w(θ) over model w(θ) on 12–120 arcmin is 1.80–2.54, as in C_ℓ.
+- D1 xslice: the slice-0 × slice-1 RED crosses agree with the model (r 0.02–0.11 against 0.05–0.11, within 1σ); BLUE data r 0.22–0.25 against model 0.18–0.20.
+- D1 V1b: with the photo-z scatter of the members (f_spec 0.20–0.44, σ_z 0.02), the model w_p falls to 0.58–0.77 of the data on 1–30 Mpc: the data w_p would need a 3D bias higher by about 1.25, which brings the model C_ℓ up by about 1.55.
+
 **Next.**
 - D1: data w_p of the spectroscopic members alone (photo-z dilution at π_max = 100 Mpc); model w(θ) against data w(θ); model C_ℓ of the slice-0 × slice-1 crosses (`scripts/28_cl_validation.py`, CPU at CC).
 - Model side: the eRASS1 flux limit in the AGN selection; the quenched fraction against the observed g − z split; then 1d, 2, 3 of D0.
