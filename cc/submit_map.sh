@@ -20,9 +20,9 @@ dep="$after"
 for k in \$(seq $start \$(($start + $n - 1))); do
     for cmd in step search jac; do
         extra=""; [ \$cmd = step ] && extra="--damp $damp"
-        id=\$(sbatch --parsable --job-name=wp3-\$cmd$tag-it\$k \${dep:+--dependency=afterok:\$dep} cc/gpu.sbatch \
+        id=\$(sbatch --parsable --job-name=wp3-\${cmd}$tag-it\$k \${dep:+--dependency=afterok:\$dep} cc/gpu.sbatch \
             scripts/26_map_fit.py \$cmd --it \$k --layout "$layout" \$extra)
-        echo "\$id wp3-\$cmd$tag-it\$k" | tee -a \$J
+        echo "\$id wp3-\${cmd}$tag-it\$k" | tee -a \$J
         dep=\$id
     done
 done
