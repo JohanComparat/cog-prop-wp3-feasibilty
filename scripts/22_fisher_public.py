@@ -44,6 +44,16 @@ SCALE_LMIN = 30.0  # below it the mask couples the multipoles and Limber fails
 KEY = ("S8", "S8_rel", "Omega_m", "sigma8", "h", "log10_eps_agn_p")
 
 
+def shard_of(a):
+    """``(i, n)`` of ``--shard i/n`` (every n-th block, from block i), ``(0, 1)`` without it."""
+    sh = getattr(a, "shard", None)
+    if not sh:
+        return 0, 1
+    i, n = (int(v) for v in sh.split("/"))
+    assert 0 <= i < n, sh
+    return i, n
+
+
 def cmd_jac(a):
     import jax
     import jax.numpy as jnp
@@ -72,9 +82,10 @@ def cmd_jac(a):
     print(f"{n} parameters, {len(info['pairs'])} pairs, {len(info['blocks'])} blocks, "
           f"built in {time.time() - t0:.1f} s", flush=True)
     done = 0
-    for b in info["blocks"]:
+    si, sn = shard_of(a)
+    for ib, b in enumerate(info["blocks"]):
         path = out / f"{b['name']}.npz"
-        if path.is_file():
+        if path.is_file() or ib % sn != si:
             continue
         if a.max_blocks and done >= a.max_blocks:
             print("stopping: --max-blocks reached (a fresh process frees the GPU)", flush=True)
@@ -183,6 +194,7 @@ def main(argv=None):
     ap.add_argument("--block-pairs-los", type=int, default=10)
     ap.add_argument("--max-blocks", type=int, default=0, help="blocks per process (0: all)")
     ap.add_argument("--layout", default="", choices=list(LAYOUTS))
+    ap.add_argument("--shard", default=None, help="i/n: every n-th block from block i (parallel jobs)")
     a = ap.parse_args(argv)
     set_layout(a.layout)
     {"jac": cmd_jac, "fisher": cmd_fisher}[a.cmd](a)

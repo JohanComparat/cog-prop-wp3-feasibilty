@@ -307,9 +307,10 @@ def cmd_search(a):
     meta = json.loads((S22.OUT / "meta.json").read_text())
     assert [b["name"] for b in info["blocks"]] == meta["blocks"], "block layout differs from script 22"
     done = 0
-    for b in info["blocks"]:
+    si, sn = S22.shard_of(a)
+    for ib, b in enumerate(info["blocks"]):
         path = sd / f"{b['name']}.npz"
-        if path.is_file():
+        if path.is_file() or ib % sn != si:
             continue
         if a.max_blocks and done >= a.max_blocks:
             print("stopping: --max-blocks reached", flush=True)
@@ -323,6 +324,13 @@ def cmd_search(a):
         del g
         jax.clear_caches()
         gc.collect()
+    if sn > 1:
+        print(f"shard {si}/{sn} done; the search without --shard combines the blocks")
+        print("done in search")
+        return
+    missing = [b["name"] for b in info["blocks"] if not (sd / f"{b['name']}.npz").is_file()]
+    if missing:
+        raise RuntimeError(f"search {a.it}: blocks missing {missing[:5]}...")
     # all blocks done: the objective at each fraction
     rec = Record(__file__)
     n_rows = len(meta["discrete"]) + len(meta["pairs"]) * len(meta["ell"])
@@ -428,6 +436,7 @@ def main(argv=None):
     ap.add_argument("--tag", default="")
     ap.add_argument("--dry", action="store_true", help="step: do not write theta")
     ap.add_argument("--layout", default="", choices=list(S22.LAYOUTS))
+    ap.add_argument("--shard", default=None, help="search, jac: i/n, every n-th block from block i")
     a = ap.parse_args(argv)
     S22.set_layout(a.layout)
     {"step": cmd_step, "search": cmd_search, "jac": cmd_jac, "eval": cmd_eval, "score": cmd_score}[a.cmd](a)
