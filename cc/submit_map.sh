@@ -8,8 +8,9 @@
 #
 #     cc/submit_map.sh _s0 4                       # slice 0 alone, four iterations
 #     START=5 AFTER=63097310 cc/submit_map.sh _s0 3
+#     MAPTAG=_d10 DAMP=10 cc/submit_map.sh _s0 4      # a second chain in 26_map_s0_d10
 set -euo pipefail
-layout="${1-_s0}"; n="${2:-3}"; damp="${DAMP:-1}"; start="${START:-1}"; after="${AFTER:-}"
+layout="${1-_s0}"; n="${2:-3}"; damp="${DAMP:-1}"; start="${START:-1}"; after="${AFTER:-}"; mtag="${MAPTAG:-}"
 R=/sps/lsst/users/jcomparat01/ggah/wp3feas/software/cog-prop-wp3-feasibilty
 SSH="ssh -o ControlMaster=auto -o ControlPath=$HOME/.ssh/cm-cc -o ControlPersist=8h -o BatchMode=yes"
 tag="${layout:-_s3}"
@@ -20,9 +21,9 @@ dep="$after"
 for k in \$(seq $start \$(($start + $n - 1))); do
     for cmd in step search jac; do
         extra=""; [ \$cmd = step ] && extra="--damp $damp"
-        id=\$(sbatch --parsable --job-name=wp3-\${cmd}$tag-it\$k \${dep:+--dependency=afterok:\$dep} cc/gpu.sbatch \
-            scripts/26_map_fit.py \$cmd --it \$k --layout "$layout" \$extra)
-        echo "\$id wp3-\${cmd}$tag-it\$k" | tee -a \$J
+        id=\$(sbatch --parsable --job-name=wp3-\${cmd}$tag$mtag-it\$k --export=ALL,WP3FEAS_MAP_TAG=$mtag \${dep:+--dependency=afterok:\$dep} cc/gpu.sbatch \
+            scripts/26_map_fit.py \$cmd --it \$k --layout "$layout" --tag "$mtag" \$extra)
+        echo "\$id wp3-\${cmd}$tag$mtag-it\$k" | tee -a \$J
         dep=\$id
     done
 done
