@@ -218,9 +218,9 @@ def cmd_v1b(a):
     om = 0.3089
     blocks = {(k[0], frozenset((k[1], k[2] or k[1]))): i for k, i in vec.blocks()}
     out = {}
-    print(f"{'sample':40s} f_spec sigma_z sigma_chi  model/data w_p (0.1-1, 1-10, 10-30 Mpc): undiluted | diluted")
+    print(f"{'sample':40s} f_spec sigma_z sigma_chi  model/data w_p (0.1-1, 1-10, 10-30 Mpc): undiluted | diluted (sigma_z estimated) | diluted (sigma_z 0.02)")
     for tier, name in samples.items():
-        s = nzs[tier]
+        s = next(v for k_, v in nzs.items() if k_.split("_N_")[0] == tier.split("_N_")[0])
         sz = float(np.sqrt(max(s["width_phot"] ** 2 - TOPHAT_WIDTH ** 2, 0.0)))
         zc = 0.15
         sig = 2997.92458 * sz / np.sqrt(om * (1 + zc) ** 3 + 1 - om)   # Mpc/h
@@ -233,13 +233,16 @@ def cmd_v1b(a):
         good = np.isfinite(vec.data[idx]) & (rp >= 0.1) & (rp <= 40)
         x = rp[good] * h
         w0 = wp_diluted(x, k, pgg, PI_MAX * h, [0.0], [1.0]) / h
-        w1 = wp_diluted(x, k, pgg, PI_MAX * h, [0.0, sig, np.sqrt(2) * sig],
-                        [fs ** 2, 2 * fs * (1 - fs), (1 - fs) ** 2]) / h
+        sig2 = 2997.92458 * 0.02 / np.sqrt(om * (1 + zc) ** 3 + 1 - om)   # sigma_z = 0.02, an assumed value
+        cls = lambda sg: wp_diluted(x, k, pgg, PI_MAX * h, [0.0, sg, np.sqrt(2) * sg],
+                                    [fs ** 2, 2 * fs * (1 - fs), (1 - fs) ** 2]) / h
+        w1, w2 = cls(sig), cls(sig2)
         wd = vec.data[idx][good]
         row = {"f_spec": fs, "sigma_z": sz, "sigma_chi_mpch": sig, "rp_mpc": rp[good].tolist(),
                "data": wd.tolist(), "model": w0.tolist(), "model_diluted": w1.tolist()}
         txt = []
-        for tag, wm in (("undiluted", w0), ("diluted", w1)):
+        row["model_diluted_sz0.02"] = w2.tolist()
+        for tag, wm in (("undiluted", w0), ("diluted", w1), ("diluted_sz0.02", w2)):
             vals = []
             for lo, hi in RP_RANGES:
                 q = (rp[good] >= lo) & (rp[good] <= hi)
@@ -247,7 +250,7 @@ def cmd_v1b(a):
                 vals.append(f"{row[f'{tag}_over_data_{lo:g}_{hi:g}']:.2f}")
             txt.append(" ".join(vals))
         out[tier] = row
-        print(f"{tier[:40]:40s} {fs:5.2f} {sz:7.4f} {sig:8.1f}   {txt[0]} | {txt[1]}", flush=True)
+        print(f"{tier[:40]:40s} {fs:5.2f} {sz:7.4f} {sig:8.1f}   {txt[0]} | {txt[1]} | sz 0.02: {txt[2]}", flush=True)
     rec.data.update(stack=stack, pi_max_mpc=PI_MAX, h=h, tophat_width=TOPHAT_WIDTH, samples=out,
                     method="Gaussian line-of-sight scatter per pair class; sigma_z from the true-z width of the photo-z members")
     print(rec.write("28_cl_validation_v1b"))
@@ -334,7 +337,7 @@ def cmd_xslice(a):
                 continue
             ix, iy, ixy = data(x, x), data(y, y), data(x, y)
             mx, my, mxy = model(x, x), model(y, y), model(x, y)
-            if None in (ix, iy, ixy) or mxy is None or mx is None or my is None:
+            if any(v is None for v in (ix, iy, ixy, mxy, mx, my)):
                 continue
             l = vec.index["x"][ixy]
             q = (l >= 30) & (l <= 200)
