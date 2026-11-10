@@ -56,6 +56,10 @@
 - Slice-0 MAP iterate 1: linear χ² 109 927 → 67 947, 39 of 79 parameters at the trust limit; line search running.
 - Three shells: step of iterate 3 stopped on `bcut@2` outside its range at the start; `26_map_fit.py step` now clips such parameters, chain resubmitted (63396878–86).
 
+- Parallel chains on slice 0 at CC, λ = 1, 3, 10, 30 (`MAPTAG`, iterates in `26_map_s0{,_d3,_d10,_d30}`); the laptop GPU could not run the step (one XLA compile took 30 min), so λ = 10 went to CC through `local/fallback_cc.sh`.
+- `--shard i/n` for the search and the Jacobian (scripts 22, 26), `SHARDS=n` in `cc/submit_map.sh`: λ = 1 and λ = 3 run sharded (4 GPUs per search and per Jacobian) from their first Jacobian on; λ = 10, λ = 30 and the three shells unsharded.
+  The gpu QOS caps a user at 100 submitted jobs and sbatch then refuses silently: shard the other chains once jobs have drained.
+
 **Next.**
 - The BLUE excess left (w(θ) 1.5–1.9 at fixed w_p) and galaxy × y at 0.55, AGN × X-ray at 2.9 (slice 0).
 - Done: when job 63296995 ends: script 23 `_s0`, `28 v3` and `xslice` again; the galaxy autos should come down from about 2 to the 1.1–1.5 left by `proj`, part of which is the π_max truncation.

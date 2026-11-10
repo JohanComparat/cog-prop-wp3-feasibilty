@@ -7,6 +7,8 @@
 # The first step (START, default 1) uses the Jacobian of iterate START-1 (iterate 0: the
 # defaults, sent by cc/deploy.sh); AFTER (job ids joined by ':') makes it wait for running jobs.
 # A search where no fraction improves stops the chain: the later jobs then exit at once.
+# The gpu QOS takes at most 100 submitted jobs per user; beyond it sbatch refuses silently
+# (an iterate costs 2 + 2 n jobs with SHARDS=n): count with `squeue -u $USER -h | wc -l`.
 #
 #     cc/submit_map.sh _s0 4                       # slice 0 alone, four iterations
 #     START=5 AFTER=63097310 cc/submit_map.sh _s0 3
