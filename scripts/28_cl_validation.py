@@ -356,11 +356,107 @@ def cmd_xslice(a):
     print(rec.write("28_cl_validation_xslice"))
 
 
+TIER_NZ = Path.home() / "data/legacysurvey/dr11/south/bgsr21s/results/tier_xcorr/nz"
+
+
+def cmd_proj(a):
+    """Model-free: the data w_p projected with the data n(z) into w(theta),
+    w(theta) = int dchi p(chi)^2 w_p(chi theta), p the n(z) per unit comoving distance (Mpc),
+    against the data w(theta). Pairs beyond pi_max = 100 Mpc are missed (a lower limit)."""
+    from astropy.cosmology import FlatLambdaCDM
+
+    cosmo = FlatLambdaCDM(H0=67.74, Om0=0.3089)
+    rec = Record(__file__)
+    rec.add_input(VECTOR)
+    rec.add_input(TIER_NZ)
+    vec = load_vector()
+    blocks = {(k[0], frozenset((k[1], k[2] or k[1]))): i for k, i in vec.blocks()}
+    names = sorted({n.decode() for k in ("a", "b") for n in vec.index[k]} - {""})
+    out = {}
+    for n in names:
+        t = parse_tracer(n)
+        if t["kind"] != "gal" or t["slice"] != 0:
+            continue
+        iw, it = blocks.get(("wp", frozenset((n,)))), blocks.get(("wtheta", frozenset((n,))))
+        f = TIER_NZ / f"{n}_nz.npz"
+        if iw is None or it is None or not f.exists():
+            continue
+        rec.add_input(f)
+        with np.load(f) as z:
+            zz, nz = z["z"], z["nz"]
+        chi = cosmo.comoving_distance(zz).value
+        p = nz / np.gradient(chi, zz)          # per unit chi
+        p /= np.trapezoid(p, chi)
+        rp, wpd = vec.index["x"][iw], vec.data[iw]
+        ok = np.isfinite(wpd) & (wpd > 0)
+        rp, wpd = rp[ok], wpd[ok]
+        th_arc = vec.index["x"][it]
+        wd = vec.data[it]
+        th = np.radians(th_arc / 60)
+        wproj = np.array([np.trapezoid(p ** 2 * np.exp(np.interp(np.log(chi * x), np.log(rp), np.log(wpd),
+                                                                   left=np.nan, right=np.nan)), chi) for x in th])
+        q = (th_arc >= 12) & (th_arc <= 120) & np.isfinite(wproj)
+        if not q.any():
+            print(f"{n[:44]:44s} no angle with w_p coverage", flush=True)
+            continue
+        r = float(np.median(wd[q] / wproj[q]))
+        out[n] = {"theta_arcmin": th_arc.tolist(), "w_data": wd.tolist(), "w_from_wp": wproj.tolist(),
+                  "data_over_proj_12_120": r,
+                  "rp_range_mpc": [float(np.nanmin(chi[p > 0.05 * p.max()]) * th[q][0]),
+                                   float(np.nanmax(chi[p > 0.05 * p.max()]) * th[q][-1])]}
+        print(f"{n[:44]:44s} w(theta) data / projected data w_p, 12-120': {r:.2f}  r_p "
+              f"{out[n]['rp_range_mpc'][0]:.1f}-{out[n]['rp_range_mpc'][1]:.1f} Mpc", flush=True)
+    rec.data.update(pi_max_mpc=PI_MAX, samples=out,
+                    method="w(theta) = int p(chi)^2 w_p(chi theta) dchi; data w_p (Mpc, h=0.6774) and data n(z)")
+    print(rec.write("28_cl_validation_proj"))
+
+
+def cmd_kern(a):
+    """int W^2 dchi of the build's photometric kernel (all zones of the support) against the same
+    integral of the tier n(z) in NZ_FILE: the auto C_ell scales with it."""
+    import jax.numpy as jnp
+
+    from ggah_sens_study.joint.survey import nz_tables
+
+    rec = Record(__file__)
+    rec.add_input(NZ_FILE)
+    stack, cfg, fid, J, th, meta, pair_of, vec, samples, M = setup()
+    tab = nz_tables(cfg)
+    h = 0.6774
+    cosmo = J.cosmology_at(jnp.asarray(th))
+    p = J.params_of(jnp.asarray(th), 0)
+    out = {}
+    for tier, name in samples.items():
+        sup = sorted(J.support[name])
+        chis = J.zone_chi(cosmo, sup)
+        i_model = 0.0
+        for u in sup:
+            w, _ = J.photo_kernel(cosmo, p, name, u, chis)
+            i_model += float(jnp.trapezoid(w ** 2, chis[u]))          # h/Mpc
+        row = {"build_name": name, "in_nz_file": name in tab, "zones": sup,
+               "int_W2_model_per_mpc": i_model * h}
+        if name in tab:
+            from astropy.cosmology import FlatLambdaCDM
+            zt, nt = tab[name]
+            chi = FlatLambdaCDM(H0=67.74, Om0=0.3089).comoving_distance(zt).value
+            pz = nt / np.gradient(chi, zt)
+            pz = pz / np.trapezoid(pz, chi)
+            row["int_W2_nz_per_mpc"] = float(np.trapezoid(pz ** 2, chi))
+            row["nz_over_model"] = row["int_W2_nz_per_mpc"] / row["int_W2_model_per_mpc"]
+        out[tier] = row
+        print(f"{tier[:44]:44s} in nz_file {row['in_nz_file']}, zones {sup}, int W^2 model "
+              f"{row['int_W2_model_per_mpc']:.5f}/Mpc, n(z) {row.get('int_W2_nz_per_mpc', float('nan')):.5f}",
+              flush=True)
+    rec.data.update(stack=stack, samples=out, nz_keys=sorted(tab))
+    print(rec.write("28_cl_validation_kern"))
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=("v1", "v1b", "v2", "v3", "xslice"))
+    ap.add_argument("cmd", choices=("v1", "v1b", "v2", "v3", "xslice", "proj", "kern"))
     a = ap.parse_args(argv)
-    {"v1": cmd_v1, "v1b": cmd_v1b, "v2": cmd_v2, "v3": cmd_v3, "xslice": cmd_xslice}[a.cmd](a)
+    {"v1": cmd_v1, "v1b": cmd_v1b, "v2": cmd_v2, "v3": cmd_v3, "xslice": cmd_xslice,
+     "proj": cmd_proj, "kern": cmd_kern}[a.cmd](a)
 
 
 if __name__ == "__main__":
