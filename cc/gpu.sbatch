@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# One resumable GPU step of this study at CC-IN2P3, one V100: the command is rerun, a few
+# One resumable GPU step of this study at CC-IN2P3, one H100 (gpu_v100 as a fallback: sbatch -p gpu_v100): the command is rerun, a few
 # blocks per process (a fresh process frees the GPU), until it prints "done in".
 #
 #     sbatch cc/gpu.sbatch scripts/26_map_fit.py jac --it 1 --layout _s0
 #SBATCH --job-name=wp3feas-gpu
-#SBATCH --partition=gpu_v100
+#SBATCH --partition=gpu_h100
 #SBATCH --gpus=1
 #SBATCH --cpus-per-task=5
 #SBATCH --mem=60G
