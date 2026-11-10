@@ -51,8 +51,14 @@
 - Queued at CC after the slice-0 Jacobian (63296995): script 23 `_s0` (63307317), 28 v2 (63307318), v3 (63307319), slice-0 MAP iterations 1–3 (63307321–29; the void iterates moved to `26_map_s0_tophat`).
   Three shells: Jacobian of iterate 2 completed (63307330), iterations 3–5 (63307331–39).
 
+- With the measured n(z) (slice-0 Jacobian 63296995, 2 h 10 min on H100): χ² at the defaults 135 910 → 113 410 over 10 991 rows; median amplitudes galaxy × galaxy 2.18 → 1.47, AGN × galaxy 1.99 → 1.50, galaxy × X-ray 0.99 → 0.85 (`results/23_project_default_s0_nz.json`).
+  w(θ) data/model on 12–120 arcmin: RED 1.13–1.39, BLUE 1.52–1.86, as `proj` predicted; v2 build = independent Limber to 0.1 per cent.
+- Slice-0 MAP iterate 1: linear χ² 109 927 → 67 947, 39 of 79 parameters at the trust limit; line search running.
+- Three shells: step of iterate 3 stopped on `bcut@2` outside its range at the start; `26_map_fit.py step` now clips such parameters, chain resubmitted (63396878–86).
+
 **Next.**
-- When job 63296995 ends: script 23 `_s0`, `28 v3` and `xslice` again; the galaxy autos should come down from about 2 to the 1.1–1.5 left by `proj`, part of which is the π_max truncation.
+- The BLUE excess left (w(θ) 1.5–1.9 at fixed w_p) and galaxy × y at 0.55, AGN × X-ray at 2.9 (slice 0).
+- Done: when job 63296995 ends: script 23 `_s0`, `28 v3` and `xslice` again; the galaxy autos should come down from about 2 to the 1.1–1.5 left by `proj`, part of which is the π_max truncation.
 - D1 (superseded by the bug): find the factor 2 of the discrete × discrete angular spectra: the model kernel of photometric samples (normalisation of S = n(z) vol/dV, the units of n̄), the data δ maps (weights, n̄ over the footprint), and w(θ) of a spectroscopic subsample against its w_p projected with its own n(z).
 - D1 (superseded): collect script 29; then decide between a bias raised by the dilution with low lensing, and an excess in the discrete × discrete spectra alone (galaxy × galaxy 2.18, AGN × galaxy 1.99 against galaxy × shear 1.01 and galaxy × X-ray 0.99).
 - D1 (earlier list): data w_p of the spectroscopic members alone (photo-z dilution at π_max = 100 Mpc); model w(θ) against data w(θ); model C_ℓ of the slice-0 × slice-1 crosses (`scripts/28_cl_validation.py`, CPU at CC).
