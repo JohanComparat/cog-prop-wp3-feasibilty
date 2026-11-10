@@ -346,6 +346,17 @@ def cmd_wp(a):
             row["b_cl"], row["b_cl_sigma"] = sq(c[0], c[1])
             if c[2] is not None:
                 row["b_cl_model"] = sq(c[2], np.array([c[2]]))[0]
+        idx = blocks.get(("cl", frozenset((x,))))
+        if idx is not None:  # the narrowest n(z) a sample cut at 0.1 < z < 0.2 can have: dV/dz on the slice
+            ls_all = vec.index["x"][idx]
+            s = idx[(ls_all >= LIN[0]) & (ls_all <= LIN[1])]
+            zt = np.linspace(0.1, 0.2, 201)
+            chit = np.interp(zt, L.zg, L.chi)
+            nt = chit ** 2 / L.E(zt)
+            nt /= np.trapezoid(nt, zt)
+            t = L.cl(vec.index["x"][s], zt, nt)
+            num = lambda v: float(np.sum(v * t) / np.sum(t * t))
+            row["b_cl_tophat"], row["b_cl_tophat_sigma"] = sq(num(vec.data[s]), np.array([num(j) for j in vec.jk[:, s]]))
         if x in agn:  # through the cross with the reference galaxies: b_A = b_gA^2 / b_g
             wx, wr, cx, cr = b2_wp(x, ref), b2_wp(ref, ref), b2_cl(x, ref), b2_cl(ref, ref)
             if wx and wr:
@@ -359,7 +370,7 @@ def cmd_wp(a):
         out[short(x)] = row
         f = lambda k: f"{row[k]:6.2f}+-{row[k + '_sigma']:4.2f}" if k in row else " " * 12
         g = row.get("b_cl_model")
-        print(f"{short(x):45s} {f('b_wp')} {f('b_cl')} {g if g is None else round(g, 2)!s:>10s}  "
+        print(f"{short(x):45s} {f('b_wp')} {f('b_cl')} top-hat {f('b_cl_tophat')} {g if g is None else round(g, 2)!s:>10s}  "
               f"{row['b_cl'] / row['b_wp'] if 'b_cl' in row and 'b_wp' in row else float('nan'):5.2f}  "
               f"{(g / row['b_cl']) ** 2 if g and 'b_cl' in row else float('nan'):5.2f}")
         if x in agn:
