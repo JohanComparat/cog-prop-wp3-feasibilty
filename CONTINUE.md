@@ -33,8 +33,15 @@
 - Galaxy × shear amplitude per sample (script 23, slice 0, inverse-variance over 13 bins) against √(galaxy auto amplitude): RED 1.02, 0.90, 0.85, 0.88 (± 0.02–0.04) against 1.54, 1.39, 1.31, 1.54; BLUE 1.54, 1.22, 1.00 against 1.93, 1.52, 1.45.
   Lensing does not allow the bias to rise by 1.3–1.5 for RED: the auto excess has a correlation coefficient with matter of about 0.6–0.7 relative to the model, or the galaxy–lensing prediction is high.
 
+- Script 29 result (`results/29_wp_spec.json`): in the spectroscopic region (f_spec 0.84–0.95, 6 per cent of the members), w_p of all members over w_p of the spectroscopic members is 0.95–1.01 on 1–10 Mpc (± 0.01–0.03) for the samples below 11.5.
+  The region's w_p over the full-sky tier w_p (f_spec 0.20–0.36) is 0.92–0.95 for RED, 0.98–1.08 for ALL and 1.15–1.19 for BLUE on 1–30 Mpc.
+  The full-sky RED w_p is not lower than the nearly spectroscopic one: its photo-z dilution is at most 10 per cent, not the 35 per cent of V1b (the V1b Gaussian model overstates it).
+  The tier w_p stands, the default bias is right, and explanation 1 (bias raised by dilution, lensing low) is ruled out for RED.
+  The excess sits in the discrete × discrete angular spectra (C_ℓ and w(θ)) alone.
+
 **Next.**
-- D1: collect script 29 (dilution measured, not assumed); then decide between a bias raised by the dilution with low lensing, and an excess in the discrete × discrete spectra alone (galaxy × galaxy 2.18, AGN × galaxy 1.99 against galaxy × shear 1.01 and galaxy × X-ray 0.99).
+- D1: find the factor 2 of the discrete × discrete angular spectra: the model kernel of photometric samples (normalisation of S = n(z) vol/dV, the units of n̄), the data δ maps (weights, n̄ over the footprint), and w(θ) of a spectroscopic subsample against its w_p projected with its own n(z).
+- D1 (superseded): collect script 29; then decide between a bias raised by the dilution with low lensing, and an excess in the discrete × discrete spectra alone (galaxy × galaxy 2.18, AGN × galaxy 1.99 against galaxy × shear 1.01 and galaxy × X-ray 0.99).
 - D1 (earlier list): data w_p of the spectroscopic members alone (photo-z dilution at π_max = 100 Mpc); model w(θ) against data w(θ); model C_ℓ of the slice-0 × slice-1 crosses (`scripts/28_cl_validation.py`, CPU at CC).
 - Model side: the eRASS1 flux limit in the AGN selection; the quenched fraction against the observed g − z split; then 1d, 2, 3 of D0.
 
