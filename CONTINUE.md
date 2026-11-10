@@ -46,6 +46,11 @@
   The three-shell build has matching names and is not affected.
 - The slice-0 Jacobian at the defaults is void: moved to `22_jacobian_s0_tophat` at CC, recomputed with the fix (job 63296995, gpu_h100); the slice-0 MAP iterates built on it are void too.
 
+- The suffix fix also went into ggah_sens_study (branch rerun-v170, 3533e61): `joint.survey.nz_tables` answers `name` with the table `name@0` in a one-shell layout. sum_stat never writes build names and needs no change.
+- `proj` with BLUE (n(z) files matched by stem): data w(θ) over projected data w_p 1.75 and 1.52 (BLUE 10–10.5, 10.5–11), 1.14–1.28 (RED), 1.17–1.55 (ALL); the π_max truncation is 1 per cent in linear theory, so the excess left after the kernel fix is real, largest for BLUE 10–10.5.
+- Queued at CC after the slice-0 Jacobian (63296995): script 23 `_s0` (63307317), 28 v2 (63307318), v3 (63307319), slice-0 MAP iterations 1–3 (63307321–29; the void iterates moved to `26_map_s0_tophat`).
+  Three shells: Jacobian of iterate 2 completed (63307330), iterations 3–5 (63307331–39).
+
 **Next.**
 - When job 63296995 ends: script 23 `_s0`, `28 v3` and `xslice` again; the galaxy autos should come down from about 2 to the 1.1–1.5 left by `proj`, part of which is the π_max truncation.
 - D1 (superseded by the bug): find the factor 2 of the discrete × discrete angular spectra: the model kernel of photometric samples (normalisation of S = n(z) vol/dV, the units of n̄), the data δ maps (weights, n̄ over the footprint), and w(θ) of a spectroscopic subsample against its w_p projected with its own n(z).

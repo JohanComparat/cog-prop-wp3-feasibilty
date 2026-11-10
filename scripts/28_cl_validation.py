@@ -378,7 +378,8 @@ def cmd_proj(a):
         if t["kind"] != "gal" or t["slice"] != 0:
             continue
         iw, it = blocks.get(("wp", frozenset((n,)))), blocks.get(("wtheta", frozenset((n,))))
-        f = TIER_NZ / f"{n}_nz.npz"
+        hits = sorted(TIER_NZ.glob(f"{n.split('_N_')[0]}_N_*_nz.npz"))   # BLUE counts are truncated
+        f = hits[0] if hits else TIER_NZ / "missing"
         if iw is None or it is None or not f.exists():
             continue
         rec.add_input(f)
