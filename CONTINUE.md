@@ -39,8 +39,16 @@
   The tier w_p stands, the default bias is right, and explanation 1 (bias raised by dilution, lensing low) is ruled out for RED.
   The excess sits in the discrete × discrete angular spectra (C_ℓ and w(θ)) alone.
 
+- `scripts/28_cl_validation.py proj` (model-free): the data w_p projected with the data n(z) gives a w(θ) below the data w(θ) by 1.14–1.55 on 12–120 arcmin (ALL and RED, π_max = 100 Mpc, so a lower limit), while the model w(θ) is 2 times below: the model's angular projection is at fault.
+- `kern`: **bug found.** In the one-shell layout the build names its tracers without the `@0` suffix (`gb10p`), the n(z) file keys carry it (`gb10p@0`), so `selection()` found no measured n(z) and every slice-0 photometric galaxy and AGN fell back to the top-hat smoothed with σ_z0 = 0.03(1 + z): ∫W² dχ = 0.00160 /Mpc against 0.00192–0.00322 /Mpc for the measured n(z), an auto C_ℓ low by 1.2–2.0.
+  Galaxy × shear and galaxy × X-ray barely depend on the kernel width, which is why they passed.
+  Fix in `wp3feas.model.public_config`: a one-shell layout reads `public_2026_nz_s0.npz`, the slice-0 tables without the suffix; after it the kernels match the n(z) to 1 per cent (job 63296994).
+  The three-shell build has matching names and is not affected.
+- The slice-0 Jacobian at the defaults is void: moved to `22_jacobian_s0_tophat` at CC, recomputed with the fix (job 63296995, gpu_h100); the slice-0 MAP iterates built on it are void too.
+
 **Next.**
-- D1: find the factor 2 of the discrete × discrete angular spectra: the model kernel of photometric samples (normalisation of S = n(z) vol/dV, the units of n̄), the data δ maps (weights, n̄ over the footprint), and w(θ) of a spectroscopic subsample against its w_p projected with its own n(z).
+- When job 63296995 ends: script 23 `_s0`, `28 v3` and `xslice` again; the galaxy autos should come down from about 2 to the 1.1–1.5 left by `proj`, part of which is the π_max truncation.
+- D1 (superseded by the bug): find the factor 2 of the discrete × discrete angular spectra: the model kernel of photometric samples (normalisation of S = n(z) vol/dV, the units of n̄), the data δ maps (weights, n̄ over the footprint), and w(θ) of a spectroscopic subsample against its w_p projected with its own n(z).
 - D1 (superseded): collect script 29; then decide between a bias raised by the dilution with low lensing, and an excess in the discrete × discrete spectra alone (galaxy × galaxy 2.18, AGN × galaxy 1.99 against galaxy × shear 1.01 and galaxy × X-ray 0.99).
 - D1 (earlier list): data w_p of the spectroscopic members alone (photo-z dilution at π_max = 100 Mpc); model w(θ) against data w(θ); model C_ℓ of the slice-0 × slice-1 crosses (`scripts/28_cl_validation.py`, CPU at CC).
 - Model side: the eRASS1 flux limit in the AGN selection; the quenched fraction against the observed g − z split; then 1d, 2, 3 of D0.
