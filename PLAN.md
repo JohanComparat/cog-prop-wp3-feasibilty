@@ -4,7 +4,7 @@
 
 ## Tracker
 
-*Status: `open`, `running`, `done (date, where)` or `dropped (reason)`. Last update: 2026-11-10 (MAP chain with a line search before each Jacobian; audit D0 of slice 0 planned).*
+*Status: `open`, `running`, `done (date, where)` or `dropped (reason)`. Last update: 2026-11-10 (audit D0 run; validation D1 of the C_ℓ path planned; MAP chains held).*
 
 | Item | What | Proposal item | Status |
 |---|---|---|---|
@@ -14,6 +14,7 @@
 | C | catastrophic photometric-redshift outliers: tolerance on $f_{\rm out}$ at $0.3\sigma$ on $S_8$, and cost when free | Ref. 1 pt 5, Table 3 | open |
 | D | the public data vector `public_2026` (`tier_ls11_v0.h5`, LS DR11 × eRASS1 × ACT DR6 × DES/KiDS/HSC shear) fitted with `ggah_mod` 1.7.0: reader, Fisher per redshift slice, projection of the default model, null tests, scale cuts, MAP, NUTS | I19, I24 | running: reader (21), Fisher per slice (22: σ(S8) = 0.0054 joint, block-diagonal jackknife) and default-model projection (23: χ² = 208 869 over 17 748 rows) done 2026-11-07 in `results/`; MAP (26) running; null tests, scale cuts and NUTS open |
 | D0 | audit of the slice 0.1–0.2 of `public_2026` against the data themselves, external measurements and the default model (`scripts/20_vector_audit.py`, at CC-IN2P3) | I19 | running: tests 1a–1c and 4a done 2026-11-10 (`results/20_vector_audit_{data,abundance}.json`): the data are self-consistent; the model's abundances are not (BLUE ×1.5–2.5 too few, RED 10–10.5 ×1.5 too many, AGN ×8–11 too many) |
+| D1 | validation of the model's $C_\ell$ and $w(\theta)$ against its $w_p$ and the data, steps V1–V5 (`scripts/28_cl_validation.py`, at CC-IN2P3); MAP chains held until it passes | I19 | open (planned 2026-11-10) |
 | E | covariance: light-cone count, compression, sub-block validation, one-shell C3 and its five-shell scaling | N11, I12, I27 | open |
 | F | timing of one likelihood value and gradient, and of a NUTS chain for 212 parameters | N10, I13 | open |
 | G | synthesis: `results/wp3_feasibility_summary.json`, the B2 figures, N1, N6, N7 read from `ggah_sens_study` | N1, N6, N7 | open |
@@ -63,6 +64,18 @@ The joint fits use the analytic Gaussian covariance of `ggah_mod`, validated aga
      The number density of each sample (the discrete rows) against the model's: a factor of 3 in the low-mass BLUE autos with the right abundance points to the occupation; with the wrong abundance, to the stellar-mass definition (LS11 masses against the model's SHMR).
      A figure per block family of slice 0, the data against the default and against the best accepted iterate of script 26, with the ratio and the whitened residual per ℓ, under `WP3FEAS_DATA/20_vector_audit/`.
   The script writes `results/20_vector_audit.json` with one verdict per test (pass, data, model, undecided); the tests that fail on the data go back to sum_stat as issues on the vector.
+- `scripts/28_cl_validation.py` (D1, at CC-IN2P3) validates the angular path of the model, $C_\ell$ and $w(\theta)$, against the projected path $w_p$, which `ggah_cal` validated on the LS10 data.
+  It was opened on 2026-11-10 because, at the defaults in slice 0, the model needs a factor of 2.18 (median of 28 blocks) on galaxy × galaxy and 1.99 on AGN × galaxy, but 1.01 on galaxy × shear and 0.99 on galaxy × X-ray, whereas the data give the same bias from the autos and from the crosses (D0, test 1b).
+  The steps go from the 3D spectrum outwards, each with a tolerance, and the next step starts only when the previous one passes.
+  V1. *One 3D spectrum.* For one sample (RED 10.5–11, z 0.1–0.2), $P_{gg}(k, z)$ and $P_{gm}(k, z)$ from `ggah_mod` at the parameters with which $w_p$ (`ggah_mod.observables.real_space.wp`) fits the LS11 $w_p$, against the spectrum that `ggah_sens_study.joint.model.build` holds for the same pair on its Limber nodes: same $k$ (h/Mpc), $z$ and units, to 0.1 per cent.
+  V2. *The projection.* From that $P_{gg}$ and the sample's $n(z)$, $C_\ell$ by an independent Limber integral (numpy, as in script 20), by `ggah_mod.observables.limber.c_ell` with `kernels.number_counts`, and by the joint build (zones summed as in script 22's `_assemble`); the three agree to 0.5 per cent on $30 \le \ell \le 2048$.
+  The same for galaxy × shear and galaxy × y, where the model already matches the data, and for AGN × galaxy.
+  A disagreement here is a code defect, fixed where it lives (`ggah_mod`, or `ggah_sens_study` on branch `rerun-v170`), with a unit test there.
+  V3. *Real space.* $w(\theta)$ from the model $C_\ell$ (`transforms.cl_to_wtheta`, with the bandpower and pixel conventions of sum_stat) against `ggah_mod.observables.WTheta`, to 1 per cent; then the data $w(\theta)$ against the data $C_\ell$ transformed the same way, for every slice-0 galaxy and AGN block (sum_stat checked the galaxy autos: median ratio 1.004–1.029 at $\theta \geq 12$ arcmin).
+  V4. *Approximations.* Limber against the exact projection at $\ell < 100$ for slices of $\Delta z = 0.1$, redshift-space distortions of the photometric samples, and the $n(z)$ shift and stretch of the closure test: each a correction on $C_\ell$ with its size, kept if above a third of the jackknife error.
+  V5. *Data and model together.* The occupation of each slice-0 sample fitted on $w_p$ alone ($r_p$ = 0.1–30 Mpc), then $C_\ell$ and $w(\theta)$ predicted at that point, with the $n(z)$ shift and stretch free within their priors: per block, PTE > 0.01 and a best-fit amplitude within $2\sigma$ of 1.
+  The step passes when $C_\ell$, $w(\theta)$ and $w_p$ agree in all slice-0 galaxy samples; the AGN follow, once the eRASS1 flux limit is in their selection (D0).
+  Until D1 passes, the MAP chains of script 26 are held at CC-IN2P3 (the Jacobians at the defaults are kept; a code fix in V2 makes them stale and they are recomputed).
 - `scripts/21_read_vector.py` reads the vector (`wp3feas/vector.py`), counts rows and spectra per statistic and slice, and maps them onto the `S5_public_2031` layout.
 - `scripts/22_fisher_public.py` computes the Jacobian at the default (`ggah_sens_study.fisher.jacobian`) and the Fisher matrix per slice and joint, with and without the Planck prior, and compares it with `S5_public_2031` on the same shells.
 - `scripts/23_project_default.py` evaluates the default model (and the 1.6.0 closure, `agn_energy="soltan"`) on every block and reports χ², PTE and whitened residuals per block and per ℓ.

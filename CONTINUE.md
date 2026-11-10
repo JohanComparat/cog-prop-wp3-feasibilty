@@ -14,8 +14,13 @@
   Data over default-model number density: BLUE 1.51, 1.93, 2.47 (M* 10–10.5, 10.5–11, 11–11.5), RED 0.65, 0.99, 1.12, 0.91, AGN 0.09–0.13.
 - The BLUE names of sum_stat carry a count truncated by one digit (e.g. `N_130142` for 1 301 429); nothing reads it.
 
+- `scripts/20_vector_audit.py wp`: linear bias from w_p (10–30 Mpc), from the data C_ℓ and from the default model's C_ℓ; the model C_ℓ of the galaxy autos is 0.39–0.55 of the data.
+  The default-model amplitudes of script 23 (slice 0): galaxy × galaxy 2.18, AGN × galaxy 1.99, galaxy × shear 1.01, galaxy × X-ray 0.99 (medians): the discrete × discrete C_ℓ of the model is suspect, not the data.
+- PLAN.md: D1, the validation of the C_ℓ and w(θ) path against w_p and the data (V1–V5).
+- The pending MAP jobs at CC are held (`scontrol hold`; release with `scontrol release <ids>`).
+
 **Next.**
-- Fetch the chains (`cc/fetch.sh`); check the first search logs.
+- D1 step V1 then V2 (`scripts/28_cl_validation.py`, CPU at CC).
 - Model side: the eRASS1 flux limit in the AGN selection; the quenched fraction against the observed g − z split; then 1d, 2, 3 of D0.
 
 ## 2026-11-07 — Part D: Fisher, default-model projection, first MAP step
