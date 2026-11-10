@@ -19,8 +19,12 @@
 - PLAN.md: D1, the validation of the C_ℓ and w(θ) path against w_p and the data (V1–V5).
 - The pending MAP jobs at CC are held (`scontrol hold`; release with `scontrol release <ids>`).
 
+- D1 V1 and V2 (`scripts/28_cl_validation.py`, CPU at CC): the model's 3D bias equals the data w_p bias (RED 10–10.5: 1.31 against 1.31) and its w_p matches the data to 0.83–1.19 on 1–30 Mpc; the build's C_ℓ equals an independent Limber integral of its own P_gg and kernels to 0.1 per cent.
+  The data C_ℓ autos are 1.8–2.6 times the model (RED, flat from ℓ = 30 to 2000); a top-hat n(z) on the slice, the narrowest possible, removes only a factor 1.2–1.4.
+  Slice-0 × slice-1 ALL crosses: r = 0.05–0.14 on 30 ≤ ℓ ≤ 200.
+
 **Next.**
-- D1 step V1 then V2 (`scripts/28_cl_validation.py`, CPU at CC).
+- D1: data w_p of the spectroscopic members alone (photo-z dilution at π_max = 100 Mpc); model w(θ) against data w(θ); model C_ℓ of the slice-0 × slice-1 crosses (`scripts/28_cl_validation.py`, CPU at CC).
 - Model side: the eRASS1 flux limit in the AGN selection; the quenched fraction against the observed g − z split; then 1d, 2, 3 of D0.
 
 ## 2026-11-07 — Part D: Fisher, default-model projection, first MAP step
