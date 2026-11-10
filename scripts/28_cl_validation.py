@@ -174,11 +174,190 @@ def cmd_v2(a):
     print(rec.write("28_cl_validation_v2"))
 
 
+NZ_SUMMARY = DATA / "tier_nz_summary.json"   # f_spec and the widths of each sample's n(z) (sum_stat tier_nz.py)
+TOPHAT_WIDTH = 0.1 / np.sqrt(12)              # standard deviation of a flat slice of width 0.1
+
+
+def xi_of(k, pk, r, k_damp=20.0):
+    """xi(r) [Mpc/h] of P(k) by a damped spherical Bessel transform."""
+    w = k ** 3 * pk * np.exp(-(k / k_damp) ** 2)
+    return np.array([np.trapezoid(w * np.sinc(k * ri / np.pi), np.log(k)) for ri in r]) / (2 * np.pi ** 2)
+
+
+def wp_diluted(rp, k, pk, pi_max, sigmas, weights, dpi=0.5):
+    """w_p [Mpc/h] at rp [Mpc/h]: xi(rp, pi) convolved along the line of sight with a Gaussian of
+    width sigma [Mpc/h] for each pair class (weights), then integrated over |pi_obs| < pi_max."""
+    smax = max(sigmas)
+    ext = pi_max + 6 * smax + 10
+    pi = np.arange(-ext, ext + dpi, dpi)
+    r = np.logspace(-2, np.log10(np.hypot(rp.max(), ext)) + 0.01, 800)
+    xr = xi_of(k, pk, r)
+    inside = np.abs(pi) <= pi_max
+    out = np.zeros(rp.size)
+    for i, x in enumerate(rp):
+        f = np.interp(np.hypot(x, pi), r, xr)
+        for s, w in zip(sigmas, weights):
+            if s > 0:
+                g = np.exp(-0.5 * (np.arange(-6 * s, 6 * s + dpi, dpi) / s) ** 2)
+                fs = np.convolve(f, g / g.sum(), mode="same")
+            else:
+                fs = f
+            out[i] += w * np.trapezoid(fs[inside], pi[inside])
+    return out
+
+
+def cmd_v1b(a):
+    """w_p of the model with the photo-z scatter of the members: pairs spec-spec, spec-photo and
+    photo-photo, scattered along the line of sight by 0, sigma_chi and sqrt(2) sigma_chi."""
+    rec = Record(__file__)
+    for p in (VECTOR, NZ_SUMMARY, D22 / "meta.json"):
+        rec.add_input(p)
+    stack, cfg, fid, J, th, meta, pair_of, vec, samples, M = setup()
+    nzs = json.loads(NZ_SUMMARY.read_text())
+    h = 0.6774
+    om = 0.3089
+    blocks = {(k[0], frozenset((k[1], k[2] or k[1]))): i for k, i in vec.blocks()}
+    out = {}
+    print(f"{'sample':40s} f_spec sigma_z sigma_chi  model/data w_p (0.1-1, 1-10, 10-30 Mpc): undiluted | diluted")
+    for tier, name in samples.items():
+        s = nzs[tier]
+        sz = float(np.sqrt(max(s["width_phot"] ** 2 - TOPHAT_WIDTH ** 2, 0.0)))
+        zc = 0.15
+        sig = 2997.92458 * sz / np.sqrt(om * (1 + zc) ** 3 + 1 - om)   # Mpc/h
+        fs = s["f_spec"]
+        zs = zone_spectra(J, fid, M, th, name)
+        u0 = min(zs, key=lambda u: abs(zs[u][0] - zc))
+        z, k, pgg = zs[u0][:3]
+        idx = blocks[("wp", frozenset((tier,)))]
+        rp = vec.index["x"][idx]
+        good = np.isfinite(vec.data[idx]) & (rp >= 0.1) & (rp <= 40)
+        x = rp[good] * h
+        w0 = wp_diluted(x, k, pgg, PI_MAX * h, [0.0], [1.0]) / h
+        w1 = wp_diluted(x, k, pgg, PI_MAX * h, [0.0, sig, np.sqrt(2) * sig],
+                        [fs ** 2, 2 * fs * (1 - fs), (1 - fs) ** 2]) / h
+        wd = vec.data[idx][good]
+        row = {"f_spec": fs, "sigma_z": sz, "sigma_chi_mpch": sig, "rp_mpc": rp[good].tolist(),
+               "data": wd.tolist(), "model": w0.tolist(), "model_diluted": w1.tolist()}
+        txt = []
+        for tag, wm in (("undiluted", w0), ("diluted", w1)):
+            vals = []
+            for lo, hi in RP_RANGES:
+                q = (rp[good] >= lo) & (rp[good] <= hi)
+                row[f"{tag}_over_data_{lo:g}_{hi:g}"] = float(np.median(wm[q] / wd[q]))
+                vals.append(f"{row[f'{tag}_over_data_{lo:g}_{hi:g}']:.2f}")
+            txt.append(" ".join(vals))
+        out[tier] = row
+        print(f"{tier[:40]:40s} {fs:5.2f} {sz:7.4f} {sig:8.1f}   {txt[0]} | {txt[1]}", flush=True)
+    rec.data.update(stack=stack, pi_max_mpc=PI_MAX, h=h, tophat_width=TOPHAT_WIDTH, samples=out,
+                    method="Gaussian line-of-sight scatter per pair class; sigma_z from the true-z width of the photo-z members")
+    print(rec.write("28_cl_validation_v1b"))
+
+
+def cmd_v3(a):
+    """w(theta) of the model, from the build's C_ell (ggah_mod.observables.transforms.cl_to_wtheta),
+    against the data w(theta) of each slice-0 galaxy auto."""
+    import jax.numpy as jnp
+    from ggah_mod.observables.transforms import cl_to_wtheta
+
+    rec = Record(__file__)
+    for p in (VECTOR, D22 / "meta.json"):
+        rec.add_input(p)
+    stack, cfg, fid, J, th, meta, pair_of, vec, samples, M = setup()
+    ell = np.asarray(meta["ell"])
+    n_disc = len(meta["discrete"])
+    D = np.zeros(n_disc + len(meta["pairs"]) * ell.size)
+    for b in meta["blocks"]:
+        with np.load(D22 / f"{b}.npz") as z:
+            D[z["rows"]] += z["D"]
+    blocks = {(k[0], frozenset((k[1], k[2] or k[1]))): i for k, i in vec.blocks()}
+    lf = np.unique(np.geomspace(2, 20000, 4000).round())
+    out = {}
+    for tier, name in samples.items():
+        j = n_disc + pair_of[(name, name)] * ell.size
+        cl = np.exp(np.interp(np.log(lf), np.log(ell), np.log(np.clip(D[j:j + ell.size], 1e-300, None))))
+        tail = lf > ell[-1]
+        cl[tail] *= (lf[tail] / ell[-1]) ** -1.5  # beyond the last node: a falling power law (theta >= 12' needs ell < 1000)
+        idx = blocks[("wtheta", frozenset((tier,)))]
+        th_arc = vec.index["x"][idx]
+        wm = np.asarray(cl_to_wtheta(jnp.asarray(np.radians(th_arc / 60)), jnp.asarray(lf), jnp.asarray(cl)))
+        wd = vec.data[idx]
+        q = (th_arc >= 12) & (th_arc <= 120)
+        out[tier] = {"theta_arcmin": th_arc.tolist(), "data": wd.tolist(), "model": wm.tolist(),
+                     "data_over_model_12_120": float(np.median(wd[q] / wm[q]))}
+        print(f"{tier[:40]:40s} w(theta) data/model on 12-120 arcmin {out[tier]['data_over_model_12_120']:.2f}",
+              flush=True)
+    rec.data.update(stack=stack, samples=out)
+    print(rec.write("28_cl_validation_v3"))
+
+
+def cmd_xslice(a):
+    """The slice-0 x slice-1 galaxy crosses: r = C_01 / sqrt(C_00 C_11) on 30-200, model (three-shell
+    Jacobian run of script 22, iterate 0) against data, for the samples present in both slices."""
+    from wp3feas.model import _in_build as inb
+
+    rec = Record(__file__)
+    d3 = DATA / "22_jacobian"
+    for p in (VECTOR, d3 / "meta.json"):
+        rec.add_input(p)
+    meta = json.loads((d3 / "meta.json").read_text())
+    ell = np.asarray(meta["ell"])
+    n_disc = len(meta["discrete"])
+    pair_of = {}
+    for i, (p_, q_) in enumerate(meta["pairs"]):
+        pair_of[(p_, q_)] = pair_of[(q_, p_)] = i
+    D = np.zeros(n_disc + len(meta["pairs"]) * ell.size)
+    for b in meta["blocks"]:
+        with np.load(d3 / f"{b}.npz") as z:
+            D[z["rows"]] += z["D"]
+    vec = load_vector()
+    by = {(k[0], k[1], k[2] or k[1]): i for k, i in vec.blocks()}
+    names = sorted({n.decode() for k in ("a", "b") for n in vec.index[k]} - {""})
+    s0 = [n for n in names if parse_tracer(n)["kind"] == "gal" and parse_tracer(n)["slice"] == 0]
+    s1 = [n for n in names if parse_tracer(n)["kind"] == "gal" and parse_tracer(n)["slice"] == 1]
+
+    def model(a_, b_):
+        A, B = inb(build_name(a_), pair_of), inb(build_name(b_), pair_of)
+        if (A, B) not in pair_of:
+            return None
+        j = n_disc + pair_of[(A, B)] * ell.size
+        return D[j:j + ell.size]
+
+    def data(a_, b_):
+        i = by.get(("cl", a_, b_), by.get(("cl", b_, a_)))
+        return i
+
+    out = {}
+    for x in s0:
+        for y in s1:
+            px, py = parse_tracer(x), parse_tracer(y)
+            if px["colour"] != py["colour"] or px["colour"] == "all":
+                continue
+            ix, iy, ixy = data(x, x), data(y, y), data(x, y)
+            mx, my, mxy = model(x, x), model(y, y), model(x, y)
+            if None in (ix, iy, ixy) or mxy is None or mx is None or my is None:
+                continue
+            l = vec.index["x"][ixy]
+            q = (l >= 30) & (l <= 200)
+            lx = vec.index["x"][ix]
+            qx = (lx >= 30) & (lx <= 200)
+            rd = vec.data[ixy][q].mean() / np.sqrt(vec.data[ix][qx].mean() * vec.data[iy][qx].mean())
+            rj = vec.jk[:, ixy][:, q].mean(1) / np.sqrt(vec.jk[:, ix][:, qx].mean(1) * vec.jk[:, iy][:, qx].mean(1))
+            lq = vec.index["x"][ixy][q]
+            mi = lambda m: np.interp(np.log(lq), np.log(ell), m).mean()
+            rm = mi(mxy) / np.sqrt(mi(mx) * mi(my))
+            sd = float(np.sqrt(0.99 * np.sum((rj - rj.mean()) ** 2)))
+            key = f"{x.split('_N_')[0][5:]} x {y.split('_N_')[0][5:]}"
+            out[key] = {"r_data": float(rd), "sigma": sd, "r_model": float(rm)}
+            print(f"{key:70s} r data {rd:.3f} +- {sd:.3f}   model {rm:.3f}", flush=True)
+    rec.data.update(ell_range=[30, 200], crosses=out)
+    print(rec.write("28_cl_validation_xslice"))
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=("v1", "v2"))
+    ap.add_argument("cmd", choices=("v1", "v1b", "v2", "v3", "xslice"))
     a = ap.parse_args(argv)
-    {"v1": cmd_v1, "v2": cmd_v2}[a.cmd](a)
+    {"v1": cmd_v1, "v1b": cmd_v1b, "v2": cmd_v2, "v3": cmd_v3, "xslice": cmd_xslice}[a.cmd](a)
 
 
 if __name__ == "__main__":
