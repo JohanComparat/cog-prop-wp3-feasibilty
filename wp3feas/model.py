@@ -47,6 +47,15 @@ def public_config(nz_file=NZ_FILE, **kw):
     if not nz_file.exists():
         nz_file.parent.mkdir(parents=True, exist_ok=True)
         write_nz_file(nz_file)
+    if len(kw.get("shells", PUBLIC["shells"])) == 1:
+        # a one-shell build names its tracers without the "@0" suffix: alias the slice-0 tables
+        # (without this the photometric kernels fall back to the smoothed top-hat of photo_sigma_z0)
+        one = nz_file.with_name(nz_file.stem + "_s0.npz")
+        if not one.exists() or one.stat().st_mtime < nz_file.stat().st_mtime:
+            with np.load(nz_file) as z:
+                tab = {k.replace("@0.", "."): z[k] for k in z.files if "@" not in k or "@0." in k}
+            np.savez(one, **tab)
+        nz_file = one
     return JointConfig.for_survey("ls10", **{**PUBLIC, **kw}, nz_file=str(nz_file))
 
 
