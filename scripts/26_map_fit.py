@@ -236,9 +236,15 @@ def cmd_step(a):
     Af = A[np.ix_(f, f)]
     pred = o["chi2"] - 2 * g[f] @ dx + dx @ Af @ dx
     pri = float(np.sum(Pr * (th1 - th0) ** 2))
-    bad = [names[i] for i in f if not lo[i] - 1e-9 <= th1[i] <= hi[i] + 1e-9]
+    bad = [i for i in f if not lo[i] - 1e-9 <= th1[i] <= hi[i] + 1e-9]
     if bad:
-        raise RuntimeError(f"step leaves the ranges of {bad}")
+        # a parameter already outside its range at the start (shell_limits depend on x) is put
+        # back on the nearest edge; the line search scores the clipped point with the full model
+        print("clipped into their ranges:", {names[i]: (float(th1[i]), float(lo[i]), float(hi[i])) for i in bad},
+              flush=True)
+        th1[bad] = np.clip(th1[bad], lo[bad], hi[bad])
+        if not ok_at(th1):
+            raise RuntimeError(f"step leaves the ranges of {[names[i] for i in bad]} and the clipped point is not finite")
     frozen_names = [names[i] for i in sorted(frozen)]
     n_lim = int(np.sum(np.isclose(sol.x, lb) | np.isclose(sol.x, ub)))
     print(f"from iterate {base}: chi2 {o['chi2']:.0f} -> {pred:.0f} (linear) on {o['n_rows']} rows, prior "
