@@ -27,8 +27,15 @@
 - D1 xslice: the slice-0 × slice-1 RED crosses agree with the model (r 0.02–0.11 against 0.05–0.11, within 1σ); BLUE data r 0.22–0.25 against model 0.18–0.20.
 - D1 V1b: with the photo-z scatter of the members (f_spec 0.20–0.44, σ_z 0.02), the model w_p falls to 0.58–0.77 of the data on 1–30 Mpc: the data w_p would need a 3D bias higher by about 1.25, which brings the model C_ℓ up by about 1.55.
 
+- The LS10 w_p of ggah_cal were corrected for photo-z dilution; the tier w_p of sum_stat (BEST_Z) are not.
+  The photo-z members of slice 0 have BEST_Z_ERR 0.017 at the median (0.009–0.027, 16th–84th percentile); the spectroscopic fraction exceeds 0.8 in nside-64 pixels holding 6 per cent of the members.
+- `scripts/29_wp_spec.py` (V1c, sum_stat venv at CC, `cc/wpspec.sbatch`): w_p of all members (BEST_Z) against w_p of the spectroscopic members (weight 1/f_spec per pixel) in those pixels, eleven slice-0 samples; jobs 63294646 (map), 63294647 (array 0–10), 63294648 (collect).
+- Galaxy × shear amplitude per sample (script 23, slice 0, inverse-variance over 13 bins) against √(galaxy auto amplitude): RED 1.02, 0.90, 0.85, 0.88 (± 0.02–0.04) against 1.54, 1.39, 1.31, 1.54; BLUE 1.54, 1.22, 1.00 against 1.93, 1.52, 1.45.
+  Lensing does not allow the bias to rise by 1.3–1.5 for RED: the auto excess has a correlation coefficient with matter of about 0.6–0.7 relative to the model, or the galaxy–lensing prediction is high.
+
 **Next.**
-- D1: data w_p of the spectroscopic members alone (photo-z dilution at π_max = 100 Mpc); model w(θ) against data w(θ); model C_ℓ of the slice-0 × slice-1 crosses (`scripts/28_cl_validation.py`, CPU at CC).
+- D1: collect script 29 (dilution measured, not assumed); then decide between a bias raised by the dilution with low lensing, and an excess in the discrete × discrete spectra alone (galaxy × galaxy 2.18, AGN × galaxy 1.99 against galaxy × shear 1.01 and galaxy × X-ray 0.99).
+- D1 (earlier list): data w_p of the spectroscopic members alone (photo-z dilution at π_max = 100 Mpc); model w(θ) against data w(θ); model C_ℓ of the slice-0 × slice-1 crosses (`scripts/28_cl_validation.py`, CPU at CC).
 - Model side: the eRASS1 flux limit in the AGN selection; the quenched fraction against the observed g − z split; then 1d, 2, 3 of D0.
 
 ## 2026-11-07 — Part D: Fisher, default-model projection, first MAP step
