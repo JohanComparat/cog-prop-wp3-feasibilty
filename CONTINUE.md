@@ -10,7 +10,6 @@
   `cc/submit_map.sh` now chains step → search → jac, with `START` and `AFTER` to continue a running chain.
 - Resubmitted at CC: slice 0 iterations 5–7 (jobs 63274484–92, after jac it4 63097310), three shells iterations 3–5 (63274494–502, after jac it2 63097319).
 - PLAN.md: audit D0 of slice 0 (`scripts/20_vector_audit.py`), four groups of tests.
-
 - `scripts/20_vector_audit.py data` (1a–1c) and `abundance` (4a), run at CC: no pair of slice-0 samples has r > 1 beyond 2σ (91 pairs); the bias ratios from the autos agree with the median of 26 crosses (galaxies, AGN, y, 13 shear bins) within 1.3σ; C(ALL) equals the RED/BLUE combination to 0.1 per cent.
   Data over default-model number density: BLUE 1.51, 1.93, 2.47 (M* 10–10.5, 10.5–11, 11–11.5), RED 0.65, 0.99, 1.12, 0.91, AGN 0.09–0.13.
 - The BLUE names of sum_stat carry a count truncated by one digit (e.g. `N_130142` for 1 301 429); nothing reads it.
