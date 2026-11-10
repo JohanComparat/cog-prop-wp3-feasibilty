@@ -1,5 +1,20 @@
 # Where this stands, and what happens next
 
+## 2026-11-10 — Part D: MAP chains at CC-IN2P3, line search, audit of slice 0 planned
+
+**Done.**
+- Three shells: iterate 1 (trust 0.125) accepted, χ² + prior 205 386 → 159 277 on 17 733 rows (linear prediction 160 796).
+- Slice 0 alone: iterates 1–3 (trust 1, 0.5, 0.25) rejected, χ² + prior 1.4 × 10³³, 5 × 10¹⁸⁰ and 133 547 against 132 427 at the defaults; the X-ray predictions diverge at the larger steps.
+  About 18 GPU hours of Jacobians went to these rejected points.
+- `scripts/26_map_fit.py search`: the model alone at 1, 1/2, 1/4 and 1/8 of each step, each block compiled once; the best fraction that lowers χ² + prior becomes the iterate, else the chain stops.
+  `cc/submit_map.sh` now chains step → search → jac, with `START` and `AFTER` to continue a running chain.
+- Resubmitted at CC: slice 0 iterations 5–7 (jobs 63274484–92, after jac it4 63097310), three shells iterations 3–5 (63274494–502, after jac it2 63097319).
+- PLAN.md: audit D0 of slice 0 (`scripts/20_vector_audit.py`), four groups of tests.
+
+**Next.**
+- Fetch the chains (`cc/fetch.sh`); check the first search logs.
+- Write and run `scripts/20_vector_audit.py` at CC, starting with the tests that need no model (1a–1d) and the abundances (4).
+
 ## 2026-11-07 — Part D: Fisher, default-model projection, first MAP step
 
 **Done.**

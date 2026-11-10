@@ -4,7 +4,7 @@
 
 ## Tracker
 
-*Status: `open`, `running`, `done (date, where)` or `dropped (reason)`. Last update: 2026-11-07 (Part D steps 1–3 run, the first MAP step taken).*
+*Status: `open`, `running`, `done (date, where)` or `dropped (reason)`. Last update: 2026-11-10 (MAP chain with a line search before each Jacobian; audit D0 of slice 0 planned).*
 
 | Item | What | Proposal item | Status |
 |---|---|---|---|
@@ -13,6 +13,7 @@
 | B | $\ell_{\max}$ per map and shell at $k = 1, 3, 10$ h/Mpc against the ACT beam, the eROSITA PSF, shear shape noise and shot noise | N8, I11 | open |
 | C | catastrophic photometric-redshift outliers: tolerance on $f_{\rm out}$ at $0.3\sigma$ on $S_8$, and cost when free | Ref. 1 pt 5, Table 3 | open |
 | D | the public data vector `public_2026` (`tier_ls11_v0.h5`, LS DR11 × eRASS1 × ACT DR6 × DES/KiDS/HSC shear) fitted with `ggah_mod` 1.7.0: reader, Fisher per redshift slice, projection of the default model, null tests, scale cuts, MAP, NUTS | I19, I24 | running: reader (21), Fisher per slice (22: σ(S8) = 0.0054 joint, block-diagonal jackknife) and default-model projection (23: χ² = 208 869 over 17 748 rows) done 2026-11-07 in `results/`; MAP (26) running; null tests, scale cuts and NUTS open |
+| D0 | audit of the slice 0.1–0.2 of `public_2026` against the data themselves, external measurements and the default model (`scripts/20_vector_audit.py`, at CC-IN2P3) | I19 | open (planned 2026-11-10) |
 | E | covariance: light-cone count, compression, sub-block validation, one-shell C3 and its five-shell scaling | N11, I12, I27 | open |
 | F | timing of one likelihood value and gradient, and of a NUTS chain for 212 parameters | N10, I13 | open |
 | G | synthesis: `results/wp3_feasibility_summary.json`, the B2 figures, N1, N6, N7 read from `ggah_sens_study` | N1, N6, N7 | open |
@@ -43,6 +44,25 @@ The redshift slices are z = 0.10–0.20 and 0.20–0.30, and 0.30–0.60 for the
 The model is the `ggah_mod` 1.7.0 default (`agn_energy="eps_dpl"`, the sector defaults, the `StudyFiducial` cosmology of `ggah_sens_study`).
 A jackknife covariance from 100 regions has rank at most 99, so it serves blocks of fewer than about 50 rows.
 The joint fits use the analytic Gaussian covariance of `ggah_mod`, validated against the jackknife on the diagonals and on sub-blocks (Part E).
+- `scripts/20_vector_audit.py` (D0) looks for the cause of the misfit of the slice 0.1–0.2, which the default model misses by χ² = 135 910 over 10 991 rows, and which three Gauss–Newton steps of 1, 0.5 and 0.25 prior widths did not lower.
+  The tests come in four groups, ordered from those that need no model to those that need one; each states which outcome points to the data and which to the model.
+  1. *Internal consistency, no model.*
+     (a) The cross-correlation coefficient $r_{ab}(\ell) = C_{ab}/\sqrt{C_{aa}C_{bb}}$ of every pair of slice-0 fields, with its jackknife error: $r > 1$ beyond $2\sigma$ means an auto-spectrum with too much shot noise subtracted or a cross with too little.
+     (b) The linear-bias triangle: on $30 \le \ell \le 200$, $b_a/b_b$ from $C_{aa}/C_{bb}$, from $C_{ac}/C_{bc}$ for every third field $c$ (galaxies, y, each shear bin) must agree.
+     (c) The nested samples: the spectra of ALL must equal the number-weighted sum of the RED and BLUE autos and their cross.
+     (d) The shot noise: the subtracted level against $1/\bar n$ from `tier_ls11_counts.py`, and the high-ℓ plateau of the autos before subtraction.
+     (e) $C_\ell$ against $w(\theta)$, already passed by the galaxy autos in sum_stat (median ratio 1.004–1.029), extended to the AGN, the y and the photon crosses.
+     (f) Each lens × shear spectrum from DES Y3, KiDS-1000 and HSC Y3 at the same lens, rescaled by its source $n(z)$, and the shear EE against the published spectra.
+  2. *Normalisation of the fields.*
+     The photon fields: their unit (counts per pixel, per exposure, per band width and effective area) against the one the band emissivity of `ggah_mod` predicts, and the band autos against the published eRASS1 diffuse-background power spectrum.
+     The y map: y × y minus the simulated noise (`tier_y_noise.py data`) against the ACT DR6 tSZ power spectrum, and the stacked y against Das et al. (2023), already in `compare_das2023.py`.
+  3. *Redshift distributions.*
+     The large-scale bias from $w_p$ on 10–30 Mpc, which does not depend on $n(z)$, against the bias from $C_\ell$ on $30 \le \ell \le 200$ with the sum_stat $n(z)$: a ratio away from 1 points to the width or the tails of $n(z)$.
+     The same with a top-hat $n(z)$ on the slice, and with the closure-test shift and stretch at $\pm1\sigma$.
+  4. *Against the default model.*
+     The number density of each sample (the discrete rows) against the model's: a factor of 3 in the low-mass BLUE autos with the right abundance points to the occupation; with the wrong abundance, to the stellar-mass definition (LS11 masses against the model's SHMR).
+     A figure per block family of slice 0, the data against the default and against the best accepted iterate of script 26, with the ratio and the whitened residual per ℓ, under `WP3FEAS_DATA/20_vector_audit/`.
+  The script writes `results/20_vector_audit.json` with one verdict per test (pass, data, model, undecided); the tests that fail on the data go back to sum_stat as issues on the vector.
 - `scripts/21_read_vector.py` reads the vector (`wp3feas/vector.py`), counts rows and spectra per statistic and slice, and maps them onto the `S5_public_2031` layout.
 - `scripts/22_fisher_public.py` computes the Jacobian at the default (`ggah_sens_study.fisher.jacobian`) and the Fisher matrix per slice and joint, with and without the Planck prior, and compares it with `S5_public_2031` on the same shells.
 - `scripts/23_project_default.py` evaluates the default model (and the 1.6.0 closure, `agn_energy="soltan"`) on every block and reports χ², PTE and whitened residuals per block and per ℓ.
