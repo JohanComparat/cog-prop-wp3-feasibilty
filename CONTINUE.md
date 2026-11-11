@@ -1,5 +1,26 @@
 # Where this stands, and what happens next
 
+## 2026-11-11 — Part D: slice-0 MAP chains with the measured n(z)
+
+**Done.**
+- Slice 0 (10 976 rows), χ² + prior after each accepted line search (fraction of the step kept):
+
+  | λ | it 1 | it 2 | it 3 | it 4 |
+  |---|---|---|---|---|
+  | 1 | 100 684 (1/8) | 80 820 (1/2) | 75 780 (1/4) | – |
+  | 3 | 100 739 (1/8) | 80 812 (1/2) | 75 779 (1/4) | 66 453 (1) |
+  | 10 | 100 237 (1/4) | 96 091 (1/8) | running | |
+  | 30 | 78 816 (1/2) | 72 749 (1/4) | running | |
+
+  The full steps at it 1–3 send the model to χ² 10⁵–10¹¹ (the X-ray and AGN blocks), so the line search is what makes progress; λ = 1 and λ = 3 follow the same path.
+- Three shells: iterate 3 accepted at the full step, χ² + prior 141 928 → 126 699 on 17 733 rows.
+- Sharded Jacobian of slice 0: four jobs of 51–57 min against 3 h 32 min for one job (both on H100).
+- λ = 1 stopped (redundant with λ = 3); λ = 3 continued sharded, iterations 5–8.
+
+**Next.**
+- Compare λ = 3, 10, 30 after iterations 3–5; keep one chain, shard it, stop the others.
+- The residual blocks at the best point: where the remaining χ² of 66 453 sits (BLUE autos, galaxy × y, AGN × X-ray, y × y).
+
 ## 2026-11-10 — Part D: MAP chains at CC-IN2P3, line search, audit of slice 0 planned
 
 **Done.**
