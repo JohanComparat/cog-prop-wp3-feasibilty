@@ -13,9 +13,10 @@
 #     cc/submit_map.sh _s0 4                       # slice 0 alone, four iterations
 #     START=5 AFTER=63097310 cc/submit_map.sh _s0 3
 #     MAPTAG=_d10 DAMP=10 SHARDS=4 cc/submit_map.sh _s0 4      # a second chain in 26_map_s0_d10
+# VECTOR (a path at CC) fits another vector than v0, MASK a row mask of scripts/25_scale_cuts.py.
 set -euo pipefail
 layout="${1-_s0}"; n="${2:-3}"; damp="${DAMP:-1}"; start="${START:-1}"; after="${AFTER:-}"
-mtag="${MAPTAG:-}"; shards="${SHARDS:-1}"
+mtag="${MAPTAG:-}"; shards="${SHARDS:-1}"; vec="${VECTOR:-}"; mask="${MASK:-}"
 R=/sps/lsst/users/jcomparat01/ggah/wp3feas/software/cog-prop-wp3-feasibilty
 SSH="ssh -o ControlMaster=auto -o ControlPath=$HOME/.ssh/cm-cc -o ControlPersist=8h -o BatchMode=yes"
 tag="${layout:-_s3}"
@@ -26,7 +27,7 @@ dep="$after"
 sub() {  # sub <name> <dependency> <script args...>: prints the job id
     local name=\$1 d=\$2; shift 2
     local id
-    id=\$(sbatch --parsable --job-name=\$name --export=ALL,WP3FEAS_MAP_TAG=$mtag \${d:+--dependency=afterok:\$d} \
+    id=\$(sbatch --parsable --job-name=\$name --export=ALL,WP3FEAS_MAP_TAG=$mtag${vec:+,WP3FEAS_VECTOR=$vec}${mask:+,WP3FEAS_MASK=$mask} \${d:+--dependency=afterok:\$d} \
         cc/gpu.sbatch scripts/26_map_fit.py "\$@" --layout "$layout" --tag "$mtag" 2>/dev/null)
     echo "\$id \$name" >> \$J
     echo "\$id \$name" >&2

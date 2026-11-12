@@ -9,6 +9,6 @@ _WW=$_WG/wp3feas
 source $_WG/software_v170/ggah_sens_study/local/cc_stack_v170.sh
 export PYTHONPATH="$_WW/software/ggah_sens_study:$PYTHONPATH"
 export WP3FEAS_DATA=$_WW/data
-export WP3FEAS_VECTOR=$_WW/data/vector/tier_ls11_v0.h5
+export WP3FEAS_VECTOR=${WP3FEAS_VECTOR:-$_WW/data/vector/tier_ls11_v0.h5}
 export WP3FEAS_REPO=$_WW/software/cog-prop-wp3-feasibilty
 unset _WG _WW
