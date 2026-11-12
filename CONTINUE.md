@@ -40,7 +40,7 @@
   So the map is sound, and the excess with the AGN kept is the AGN.
   Binary weights (f_sky 0.055, 0.088, 0.120, 0.151, 0.182 for b30_p25 … b20_p70): C_ℓ over the step before 0.96 (χ²/band 3.9), 1.02 (1.0), 1.06 (12.2), 0.96 (8.6).
   The strict rule (χ²/band < 2) stops at b30_p25; we take **b30_p55** (5 132 deg²): p25 → p55 changes C_ℓ by 2 per cent in total and p40, p55 agree; the first clear excess (+6 per cent) comes with the higher-background fields of p70.
-  Full C_ℓ at CC with the b30_p55 X-ray fields (`tier_ls11_measure.py --tag _xrb30p55 cl --xray --xray-footprint b30_p55`, job 63560954, up to 3 days): X-ray autos and crosses with galaxies, AGN and y; the shear crosses then through `tier_shear_cl.py`.
+  Full C_ℓ at CC with the b30_p55 X-ray fields (`tier_ls11_measure.py --tag _xrb30p55 cl --xray --xray-footprint b30_p55`, job 63560954: jackknife 94/100 after 4 h 40 min); the strict footprint b30_p25 in `cl_nside1024_xrb30p25.h5` (job 63618595): X-ray autos and crosses with galaxies, AGN and y; the shear crosses then through `tier_shear_cl.py`.
 - `docs/model_status.md`: the model per work package; the defaults of ggah_mod stay until the masked fit converges.
 
 **Next.**
