@@ -36,7 +36,9 @@
 - Script 25 (`results/25_scale_cuts_mask*.json`): ℓ ≥ 30, ℓ ≤ 1 h/Mpc χ(z), y × y out keeps 45 785 of 85 606 C_ℓ rows; at λ = 3 it 6, χ² 62 816 → 43 136 on 9 251 rows; without the X-ray autos of v0, 31 262 on 7 451 rows (4.2 per row). Left: galaxy × galaxy 7 946 / 280, AGN × X-ray 8 769 / 450, shear × shear 6 232 / 994.
 - X-ray re-measurement (sum_stat `tier_xray_background.py`, `tier_xray_fields.py --mask`, `tier_xray_footprint_cl.py`): background map from eRASS1 Main; footprints b30_p25 … b20_p70 of 2 347–7 794 deg²; masks: Magellanic Clouds, Virgo, Fornax, 96 789 Galactic eRASS1 sources, 63 422 Gaia stars G < 8; AGN and clusters kept.
   Broad band 0.5–2.0 keV with exposure weights: effective f_sky 0.014–0.036 (the deep ecliptic-pole fields dominate), power 4–27 times Lau et al. (2025) Fig. 2, rising with ℓ: the unmasked point sources (Lau mask every EXT_LIKE = 0 source). The decision rule picks b30_p25 (successive steps differ by 7–22 per cent).
-  Running: b30_p70 with all point sources masked and binary weights, for the comparison with Lau.
+  Comparison with Lau et al. (2025) on b30_p70, binary mask (f_sky 0.151): our ℓ(ℓ+1)C_ℓ/2π over their Fig. 2 is 2.3–9.7 (ℓ = 100–2000) with the AGN kept; with every eRASS1 point source masked (903 521, EXT_LIKE = 0, 2 × APE_RADIUS_1; 5 631 deg², f_sky 0.130) it is 0.74, 0.81, 1.16, 1.24, 1.37 at ℓ = 100, 200, 500, 1000, 2000, within the 20 per cent of reading their figure plus their absorption correction and cluster mask; shot noise over signal 0.21 at ℓ = 500.
+  So the map is sound, and the excess with the AGN kept is the AGN.
+  The decision rule is to be rerun with binary weights (the exposure weight gave f_sky 0.014–0.036).
 - `docs/model_status.md`: the model per work package; the defaults of ggah_mod stay until the masked fit converges.
 
 **Next.**
