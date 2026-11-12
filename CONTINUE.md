@@ -10,7 +10,13 @@
 - On v1 at λ = 3 it 6 (`results/25_scale_cuts_chi2_v1_d3it6.json`, `results/23_project_default_v1_d3it6.json`): X-ray × X-ray χ² 11 874 → 114 392 on 2 040 rows; data/model median 6.8 → 2.6, but the jackknife σ of the autos falls 5–20 times at ℓ < 500 (the Galactic variance is gone), so the model's X-ray auto shape is now tested for the first time and fails it (best-fit amplitude 0.40 against a median ratio 2.6).
   Shear × X-ray 4 671 on 2 912 rows; AGN × X-ray 18 427 on 720.
 
+- Data/model of the X-ray autos on v1 at λ = 3 it 6, median per ℓ range: 1.95 (30–100), 2.34 (100–200), 2.48 (200–500), 3.08 (500–1 000), 4.53 (1 000–2 100); median pull 0.9–1.4 σ per row.
+  The excess rises with ℓ, as a flat C_ℓ would: the source shot noise of the resolved point sources (photons clustered in AGN and stars, which the A–B photon noise does not remove), not Galactic emission.
+- MAP chain on v1 with the v1 mask at CC (`MAPTAG=_v1 DAMP=3 SHARDS=4 START=7`, jobs 63708834–67, iterations 7–9), seeded from λ = 3 it 6 (`26_map_s0_v1/it6`, χ² 145 949 + prior 4.1 on 9 788 rows); `cc/submit_map.sh` takes `VECTOR` and `MASK`.
+- Kraken GPU is full and has no ggah environment; dahu ran the shear × X-ray. The chains stay at CC.
+
 **Next.**
+- A shot-noise term per X-ray band (one free amplitude per band, or the Poisson term of the eRASS1 sources) in the X-ray auto model, before reading the X-ray × X-ray χ².
 - The X-ray × X-ray model on v1: refit with the X-ray autos in (MAP from λ = 3 it 6 on v1), and the per-ℓ residual of the autos (excess at ℓ < 200: residual Galactic or CXB-source shot noise not in the model).
 - AGN × X-ray: eRASS1 flux limit in the AGN selection.
 
