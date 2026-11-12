@@ -70,6 +70,8 @@ def system(D, slices=None):
     tag = np.array(["los" if not t else "+".join(map(str, t)) for t in S22._slice_of(vec, rows)])
     if slices:
         fin &= np.isin(tag, slices)
+    if os.environ.get("WP3FEAS_MASK"):   # a row mask of scripts/25_scale_cuts.py (keep over the vector rows)
+        fin &= np.load(os.environ["WP3FEAS_MASK"])["keep"][rows]
     out = []
     for k in np.unique(key[fin]):
         if k in EXCLUDE:
