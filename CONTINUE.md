@@ -38,7 +38,9 @@
   Broad band 0.5–2.0 keV with exposure weights: effective f_sky 0.014–0.036 (the deep ecliptic-pole fields dominate), power 4–27 times Lau et al. (2025) Fig. 2, rising with ℓ: the unmasked point sources (Lau mask every EXT_LIKE = 0 source). The decision rule picks b30_p25 (successive steps differ by 7–22 per cent).
   Comparison with Lau et al. (2025) on b30_p70, binary mask (f_sky 0.151): our ℓ(ℓ+1)C_ℓ/2π over their Fig. 2 is 2.3–9.7 (ℓ = 100–2000) with the AGN kept; with every eRASS1 point source masked (903 521, EXT_LIKE = 0, 2 × APE_RADIUS_1; 5 631 deg², f_sky 0.130) it is 0.74, 0.81, 1.16, 1.24, 1.37 at ℓ = 100, 200, 500, 1000, 2000, within the 20 per cent of reading their figure plus their absorption correction and cluster mask; shot noise over signal 0.21 at ℓ = 500.
   So the map is sound, and the excess with the AGN kept is the AGN.
-  The decision rule is to be rerun with binary weights (the exposure weight gave f_sky 0.014–0.036).
+  Binary weights (f_sky 0.055, 0.088, 0.120, 0.151, 0.182 for b30_p25 … b20_p70): C_ℓ over the step before 0.96 (χ²/band 3.9), 1.02 (1.0), 1.06 (12.2), 0.96 (8.6).
+  The strict rule (χ²/band < 2) stops at b30_p25; we take **b30_p55** (5 132 deg²): p25 → p55 changes C_ℓ by 2 per cent in total and p40, p55 agree; the first clear excess (+6 per cent) comes with the higher-background fields of p70.
+  Full C_ℓ at CC with the b30_p55 X-ray fields (`tier_ls11_measure.py --tag _xrb30p55 cl --xray --xray-footprint b30_p55`, job 63560954, up to 3 days): X-ray autos and crosses with galaxies, AGN and y; the shear crosses then through `tier_shear_cl.py`.
 - `docs/model_status.md`: the model per work package; the defaults of ggah_mod stay until the masked fit converges.
 
 **Next.**
