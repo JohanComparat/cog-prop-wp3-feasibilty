@@ -12,7 +12,7 @@
 
 - Data/model of the X-ray autos on v1 at λ = 3 it 6, median per ℓ range: 1.95 (30–100), 2.34 (100–200), 2.48 (200–500), 3.08 (500–1 000), 4.53 (1 000–2 100); median pull 0.9–1.4 σ per row.
   The excess rises with ℓ, as a flat C_ℓ would: the source shot noise of the resolved point sources (photons clustered in AGN and stars, which the A–B photon noise does not remove), not Galactic emission.
-- MAP chain on v1 with the v1 mask at CC (`MAPTAG=_v1 DAMP=3 SHARDS=4 START=7`, jobs 63708834–67, iterations 7–9), seeded from λ = 3 it 6 (`26_map_s0_v1/it6`, χ² 145 949 + prior 4.1 on 9 788 rows); `cc/submit_map.sh` takes `VECTOR` and `MASK`.
+- MAP chain on v1 with the v1 mask at CC (`MAPTAG=_v1 DAMP=3 SHARDS=4 START=7`, jobs 63708838–67, iterations 7–9), seeded from λ = 3 it 6 (`26_map_s0_v1/it6`, χ² 145 949 + prior 4.1 on 9 788 rows); `cc/submit_map.sh` takes `VECTOR` and `MASK`.
 - Kraken GPU is full and has no ggah environment; dahu ran the shear × X-ray. The chains stay at CC.
 
 **Next.**
