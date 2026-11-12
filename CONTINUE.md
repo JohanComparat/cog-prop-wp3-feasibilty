@@ -1,5 +1,19 @@
 # Where this stands, and what happens next
 
+## 2026-11-12 (evening) — the X-ray blocks on a clean footprint: vector v1
+
+**Done.**
+- X-ray C_ℓ at CC on footprint b30_p55 (5 132 deg²; job 63560954, 4 h 58 min) and on the strict b30_p25 (63618595, 3 h 07 min): `measurements/cl/cl_nside1024_xrb30p{55,25}.h5`, copied to the laptop.
+  The X-ray autos fall by a factor of 2–15 against v0 at low ℓ; b30_p25 and b30_p55 agree within about 30 per cent.
+- Shear × X-ray on dahu (OAR 974836–8, 30 min each) from the photon fields exported at CC (`inputs/cl_fields_xrb30p55`): `measurements/cl_shear_xrb30p55/`.
+- `tier_ls11_v1.h5` (sum_stat `tier_assemble_vector.py --xray-cl --xray-shear`): every block with a photon field from the clean footprint, the rest as v0; 68 064 elements (v0 103 254: the `_PSMASK` copies are gone, the 0.5–2.0 keV band is new).
+- On v1 at λ = 3 it 6 (`results/25_scale_cuts_chi2_v1_d3it6.json`, `results/23_project_default_v1_d3it6.json`): X-ray × X-ray χ² 11 874 → 114 392 on 2 040 rows; data/model median 6.8 → 2.6, but the jackknife σ of the autos falls 5–20 times at ℓ < 500 (the Galactic variance is gone), so the model's X-ray auto shape is now tested for the first time and fails it (best-fit amplitude 0.40 against a median ratio 2.6).
+  Shear × X-ray 4 671 on 2 912 rows; AGN × X-ray 18 427 on 720.
+
+**Next.**
+- The X-ray × X-ray model on v1: refit with the X-ray autos in (MAP from λ = 3 it 6 on v1), and the per-ℓ residual of the autos (excess at ℓ < 200: residual Galactic or CXB-source shot noise not in the model).
+- AGN × X-ray: eRASS1 flux limit in the AGN selection.
+
 ## 2026-11-12 — Part D: slice-0 chains, χ² by block at the best point
 
 **Done.**
