@@ -1,5 +1,20 @@
 # Where this stands, and what happens next
 
+## 2026-11-12 — Part D: slice-0 chains, χ² by block at the best point
+
+**Done.**
+- χ² + prior, slice 0 (10 976 rows): λ = 3 it 5 65 115 (1/4), it 6 62 820 (full); λ = 30 it 3 66 463 (1/2), it 4 61 027 (full); λ = 10 it 3 81 405, stopped.
+  Three shells: it 4 117 949 (1/2).
+- λ = 30's Jacobian of it 4 had been cancelled by the faulty `scancel` of 10 Nov: resubmitted in four shards, iterations 5–8 sharded after it; λ = 3 at iterations 7–8.
+- `23_project_default.py --model-dir 26_map_s0_d3/it6` (`results/23_project_default_d3it6.json`): χ² 113 410 → 66 374; by block type (χ², rows, median amplitude), defaults → it 6:
+  galaxy × galaxy 49 893 → 14 844 (420 rows, amplitude 1.47 → 1.08); galaxy × X-ray 11 918 → 4 865; AGN × galaxy 1 844 → 1 087; galaxy × y 1 162 → 385 (amplitude 0.55 → 1.10).
+  Unchanged: AGN × X-ray 17 573 (675 rows, amplitude 3.2), X-ray × X-ray 11 874 (1 800 rows), shear × shear 6 232 (994 rows, χ²/n 6.3), y × y 3 559 (15 rows, noise not subtracted).
+- Those four hold 39 000 of the 66 374: they need a scale cut or a systematics model (script 25), not more iterations.
+
+**Next.**
+- Script 25 on these four: y × y out; AGN × X-ray (the eRASS1 flux limit of the AGN selection, data/model abundance 0.09–0.13); X-ray autos (photon shot noise, the PSF); shear × shear (covariance of the 13 bins, the source n(z)).
+- Galaxy × galaxy at χ²/n 35 with amplitude 1.08: the shape, scale by scale (BLUE 10–10.5 at high ℓ).
+
 ## 2026-11-11 — Part D: slice-0 MAP chains with the measured n(z)
 
 **Done.**
