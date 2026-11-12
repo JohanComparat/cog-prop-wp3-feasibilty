@@ -32,6 +32,13 @@
 - Sharded Jacobian of slice 0: four jobs of 51–57 min against 3 h 32 min for one job (both on H100).
 - λ = 1 stopped (redundant with λ = 3); λ = 3 continued sharded, iterations 5–8.
 
+**Done (later).**
+- Script 25 (`results/25_scale_cuts_mask*.json`): ℓ ≥ 30, ℓ ≤ 1 h/Mpc χ(z), y × y out keeps 45 785 of 85 606 C_ℓ rows; at λ = 3 it 6, χ² 62 816 → 43 136 on 9 251 rows; without the X-ray autos of v0, 31 262 on 7 451 rows (4.2 per row). Left: galaxy × galaxy 7 946 / 280, AGN × X-ray 8 769 / 450, shear × shear 6 232 / 994.
+- X-ray re-measurement (sum_stat `tier_xray_background.py`, `tier_xray_fields.py --mask`, `tier_xray_footprint_cl.py`): background map from eRASS1 Main; footprints b30_p25 … b20_p70 of 2 347–7 794 deg²; masks: Magellanic Clouds, Virgo, Fornax, 96 789 Galactic eRASS1 sources, 63 422 Gaia stars G < 8; AGN and clusters kept.
+  Broad band 0.5–2.0 keV with exposure weights: effective f_sky 0.014–0.036 (the deep ecliptic-pole fields dominate), power 4–27 times Lau et al. (2025) Fig. 2, rising with ℓ: the unmasked point sources (Lau mask every EXT_LIKE = 0 source). The decision rule picks b30_p25 (successive steps differ by 7–22 per cent).
+  Running: b30_p70 with all point sources masked and binary weights, for the comparison with Lau.
+- `docs/model_status.md`: the model per work package; the defaults of ggah_mod stay until the masked fit converges.
+
 **Next.**
 - Compare λ = 3, 10, 30 after iterations 3–5; keep one chain, shard it, stop the others.
 - The residual blocks at the best point: where the remaining χ² of 66 453 sits (BLUE autos, galaxy × y, AGN × X-ray, y × y).
