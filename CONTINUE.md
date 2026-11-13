@@ -1,5 +1,25 @@
 # Where this stands, and what happens next
 
+## 2026-11-13 (evening) — the AGN: eRASS1 selection and the AGN × X-ray shot noise
+
+**Done.**
+- `25_scale_cuts.py agnx` (`results/25_scale_cuts_agnx.json`), AGN abundance of slice 0 at the 1.7.0 defaults, data/model for L_X ≥ 10^42.5, 10^43, 10^43.5 erg/s:
+  as built (catalogue band 2–10 keV, no flux limit) 0.13, 0.19, 0.19 once the counts are divided by the AGN footprint (11 152 deg², eRASS1-DE × LS11) rather than by the LS11 area (16 516 deg², the 0.09–0.13 of D0);
+  with the catalogue band 0.2–2.3 keV, the band the eRASS1 L_X comes from, 0.59, 0.68, 0.55;
+  with the flux cut f_cut = 2.98e-14 erg/s/cm² as well, 0.60, 0.68, 0.55;
+  with the eRASS1 completeness (summed tile area curves, 0.10 at f_cut) as well, 0.77, 0.70, 0.55.
+  The band is the main term: `JointConfig.agn_band` is (2, 10) keV in the build, which keeps obscured AGN that the catalogue's soft-band conversion puts below the threshold.
+- `25_scale_cuts.py agneval` (`results/25_scale_cuts_agneval_d3it8.json`), the 12 model blocks holding an AGN rebuilt with `agn_band=(0.2, 2.3)` at λ = 3 it 8 (CC job 63797775, V100, 20 min): the density of L_X ≥ 10^42.5 falls 8.6e-5 → 5.5e-5 (Mpc/h)^-3, the C_ℓ change by at most 8 per cent, and the χ² of the AGN blocks does not move (AGN × X-ray 17 612 → 17 609, amplitude 3.32 → 3.30).
+- `25_scale_cuts.py xshot --pairs agnx` (`results/25_scale_cuts_xshot_agnx_d3it8.json`), the 45 AGN × X-ray blocks on the mask rows (450): χ² 8 788 for the model, 5 365 with a free amplitude, 251 with an amplitude and a constant C_ℓ.
+  The amplitude with the constant is 1.19, 0.98, 0.85 (median per threshold); the constant is 12.6, 23.8, 66.7 times the model at ℓ = 1 000.
+  The AGN × X-ray excess is the Poisson term of the catalogued AGN's own photons in the map, which the model lacks; the clustering part is right.
+- CC: `cc/gpu.sbatch` defaults to gpu_v100 (gpu_h100 has 3 nodes, all taken); the chains run there (a Jacobian shard 1 h 22–1 h 26).
+- GRICAD: dev-full on dahu (OAR 977215, 65/65), the four sites done; the CIGALE clones and the bundle copies deleted.
+
+**Next.**
+- The AGN × X-ray Poisson term in the model: C_ℓ^shot of a sample with the band map is the mean band flux of its members over its angular density and the map's mean, predictable from the catalogue (no free parameter) or from the sector's luminosity weights; then `agn_band = (0.2, 2.3)` in `PUBLIC` for the next chains (the flux limit is fixed in ggah_sens_study at 1e-30: its change is the user's call, and matters only for 10^42.5).
+- The remaining abundance factor 0.55–0.77: counterpart (PUR90) and redshift completeness, or the uncalibrated `mixed` XLF.
+
 ## 2026-11-13 — X-ray autos on v1: amplitude per band and shot noise
 
 **Done.**
