@@ -1,5 +1,17 @@
 # Where this stands, and what happens next
 
+## 2026-11-13 — X-ray autos on v1: amplitude per band and shot noise
+
+**Done.**
+- `25_scale_cuts.py xshot` (`results/25_scale_cuts_xshot_v1_26_map_s0_d3_it6.json`), λ = 3 it 6 on v1, the 136 X-ray × X-ray blocks (2 040 kept rows): χ² 114 392 for the model as it is, 26 486 with one free amplitude per block, 18 079 with an amplitude and a constant C_ℓ.
+  The amplitude falls with energy: 1.2–1.9 at 0.5–0.7 keV and in the 0.5–2.0 keV band, 0.4–0.8 at 0.7–1.1 keV, 0.1–0.3 above 1.2 keV.
+  The model's X-ray spectrum is too hard: the per-band emissivity (gas temperature, metallicity, or the unresolved AGN share), not the clustering, carries most of the misfit; the constant term (N/model at ℓ = 1 000 of 0.5–4) takes another 8 400.
+- v1 chain: iterate 7 takes the full step, χ² + prior 145 953 → 61 233 on 9 788 rows; its Jacobian and the combine of λ = 30 it 6 wait for H100s at CC.
+- λ = 3 chain: iterate 8 at 59 036 (half step), the last one submitted.
+
+**Next.**
+- The X-ray emissivity per band in the model (the hot-gas spectrum against the 21 bands), and a shot-noise term per X-ray band, before reading the X-ray × X-ray χ².
+
 ## 2026-11-12 (evening) — the X-ray blocks on a clean footprint: vector v1
 
 **Done.**
