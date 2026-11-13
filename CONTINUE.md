@@ -1,5 +1,21 @@
 # Where this stands, and what happens next
 
+## 2026-11-13 (late night) — the Poisson term in the chains, on v1, and for the galaxies
+
+**Done.**
+- `agnshot` vectorised, with `--samples agn|gal` and `--field-tag`; outputs `results/25_scale_cuts_agnshot_{agn,gal}[_Mb30_p55]_r{0,1}.json` (`_agn_r1` is the earlier `25_scale_cuts_agnshot_r1.json`).
+- AGN on the v1 fields (b30_p55, 2 530, 1 316, 386 members): C_shot 5.4e-6, 8.5e-6, 1.9e-5 at 1.3–1.4 keV, as on v0.
+- Aperture test, the member's pixel against the 3 × 3 pixels: 0.82–0.84 for the AGN (a point source, the PSF across pixel edges), 0.27–0.49 for the galaxies (extended: their excess is mostly clustered emission, group gas, which the model already holds).
+- Galaxy × X-ray (`results/25_scale_cuts_xshot_galx_d3it8_meas.json`, 105 blocks, 1 050 rows, λ = 3 it 8): χ² 2 646 for the model, 1 252 with a free amplitude, 615 with an amplitude and a constant; the measured 3 × 3 term added at a fixed value gives 7 874.
+  The fitted constant is 0.6–3.1 times the pixel value and 0.4–1.2 times the 3 × 3 one: the galaxies carry a Poisson term, but the photons cannot separate it from the one-halo gas; no fixed galaxy term enters the chains.
+- `26_map_fit.system()` adds the Poisson term of `WP3FEAS_SHOT` (colon-separated agnshot JSONs) to the model rows; `public_config()` takes `WP3FEAS_AGN_BAND` ("0.2:2.3"); `cc/submit_map.sh` passes `SHOT` and `AGNBAND` (a comma would split the sbatch `--export` list).
+- Chain `_shot` at CC (`MAPTAG=_shot DAMP=3 SHARDS=4 START=9`, step job 63800984, iterations 9–11): seeded with `26_map_s0_d3/it8` and the 12 AGN blocks of `25_agnband_d3it8`, the AGN Poisson term of v0, the band 0.2–2.3 keV; `it7/objective.json` is a placeholder (χ² 1e30) so that it 8 is the start.
+
+**Next.**
+- Read the `_shot` chain: χ² of AGN × X-ray and the AGN parameters against λ = 3.
+- The v1 chain with `SHOT=..._agn_Mb30_p55_r1.json` once its current iterations end.
+- Galaxy × X-ray: a free constant per galaxy sample (one parameter each, positive prior) is the option left; it is a model change (ggah_mod/ggah_sens_study) or a nuisance of this repo, to decide.
+
 ## 2026-11-13 (night) — the AGN × X-ray Poisson term, measured from the photons
 
 **Done.**
