@@ -313,10 +313,15 @@ def cmd_agneval(a):
 
     todo = [b for b in info["blocks"] if touches(b["rows"])]
     print(f"{len(todo)} of {len(info['blocks'])} blocks hold an AGN", flush=True)
+    done = 0
     for b in todo:
         path = out / f"{b['name']}.npz"
         if path.is_file():
             continue
+        if a.max_blocks and done >= a.max_blocks:
+            print("stopping: --max-blocks reached", flush=True)
+            return
+        done += 1
         t1 = time.time()
         np.savez(path, rows=np.asarray(b["rows"]), D=np.asarray(jax.jit(b["f"])(jnp.asarray(th))))
         print(f"  {b['name']}: {time.time() - t1:.1f} s", flush=True)
@@ -363,6 +368,7 @@ def cmd_agneval(a):
                     by_type={t: {"chi2_built": v[0], "chi2_band": v[1], "n_rows": int(v[2]), "n_blocks": int(v[3])}
                              for t, v in tot.items()}, blocks=blocks_out)
     print(rec.write(f"25_scale_cuts_agneval{a.out_tag}"))
+    print(f"done in {rec.data.get('wall_time_s', 0)}")
 
 
 def main(argv=None):
@@ -375,6 +381,7 @@ def main(argv=None):
     ap.add_argument("--layout", default="_s0")
     ap.add_argument("--out-tag", default="")
     ap.add_argument("--agn-band", type=float, nargs=2, default=(0.2, 2.3), help="agneval: keV")
+    ap.add_argument("--max-blocks", type=int, default=0, help="agneval: blocks per process (0: all)")
     ap.add_argument("--nz", type=int, default=5, help="agnx: redshift nodes in the slice")
     ap.add_argument("--flux-dex", type=float, default=2.5, help="agnx: flux range above f_cut, dex")
     ap.add_argument("--flux-step", type=float, default=0.25, help="agnx: flux step, dex")
