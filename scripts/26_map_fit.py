@@ -57,13 +57,13 @@ def theta_of(it):
 
 def shot_rows(vec, rows):
     """The Poisson term of the discrete x X-ray blocks, a constant per block, on ``rows``: zero
-    unless WP3FEAS_SHOT names JSONs of ``25_scale_cuts.py agnshot`` (comma-separated), whose
+    unless WP3FEAS_SHOT names JSONs of ``25_scale_cuts.py agnshot`` (colon-separated), whose
     ``samples[sample][band]["c_shot"]`` are added to the model."""
     out = np.zeros(len(rows))
     if not os.environ.get("WP3FEAS_SHOT"):
         return out
     c = {}
-    for f in os.environ["WP3FEAS_SHOT"].split(","):
+    for f in os.environ["WP3FEAS_SHOT"].split(":"):
         for sid, bands in json.loads(Path(f).read_text())["samples"].items():
             for band, v in bands.items():
                 c[(sid, band)] = c[(band, sid)] = v["c_shot"]

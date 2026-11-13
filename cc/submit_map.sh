@@ -14,8 +14,8 @@
 #     START=5 AFTER=63097310 cc/submit_map.sh _s0 3
 #     MAPTAG=_d10 DAMP=10 SHARDS=4 cc/submit_map.sh _s0 4      # a second chain in 26_map_s0_d10
 # VECTOR (a path at CC) fits another vector than v0, MASK a row mask of scripts/25_scale_cuts.py,
-# SHOT the Poisson-term JSONs of 25_scale_cuts.py agnshot (comma-separated), AGNBAND the AGN
-# catalogue band ("0.2,2.3" for eRASS1).
+# SHOT the Poisson-term JSONs of 25_scale_cuts.py agnshot (colon-separated), AGNBAND the AGN
+# catalogue band ("0.2:2.3" for eRASS1; a comma would split the --export list).
 set -euo pipefail
 layout="${1-_s0}"; n="${2:-3}"; damp="${DAMP:-1}"; start="${START:-1}"; after="${AFTER:-}"
 mtag="${MAPTAG:-}"; shards="${SHARDS:-1}"; vec="${VECTOR:-}"; mask="${MASK:-}"; shot="${SHOT:-}"; band="${AGNBAND:-}"
