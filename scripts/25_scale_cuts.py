@@ -148,7 +148,10 @@ def cmd_xshot(a):
     ix = vec.index
     A_, B_ = ix["a"][rows].astype(str), ix["b"][rows].astype(str)
     out, tot = {}, np.zeros(3)
-    for name in sorted({f"{x}__{y}" for x, y in zip(A_, B_) if x.startswith("EVT") and y.startswith("EVT")}):
+    pick = {"xx": lambda x, y: x.startswith("EVT") and y.startswith("EVT"),
+            "agnx": lambda x, y: (x.startswith("ERO1_AGN") and y.startswith("EVT"))
+            or (y.startswith("ERO1_AGN") and x.startswith("EVT"))}[a.pairs]
+    for name in sorted({f"{x}__{y}" for x, y in zip(A_, B_) if pick(x, y)}):
         x, y = name.split("__")
         sel = np.flatnonzero((A_ == x) & (B_ == y) & keep[rows])
         if sel.size < 4:
@@ -169,15 +172,15 @@ def cmd_xshot(a):
                      "shot_over_model_l1000": res[2][1][1] / float(np.interp(1000, ix["x"][rows[sel]], m[sel]))}
         tot += [res[0][0], res[1][0], res[2][0]]
     n = sum(v["n"] for v in out.values())
-    print(f"{len(out)} X-ray x X-ray blocks, {n} rows: chi2 model {tot[0]:.0f}, + amplitude {tot[1]:.0f}, "
+    print(f"{len(out)} {a.pairs} blocks, {n} rows: chi2 model {tot[0]:.0f}, + amplitude {tot[1]:.0f}, "
           f"+ amplitude and shot noise {tot[2]:.0f}")
-    au = {k: v for k, v in out.items() if k.split("__")[0] == k.split("__")[1]}
+    au = {k: v for k, v in out.items() if a.pairs == "agnx" or k.split("__")[0] == k.split("__")[1]}
     for k, v in list(au.items())[:30]:
         print(f"{k:30s} n {v['n']:3d}  chi2 {v['chi2_model']:8.0f} {v['chi2_amp']:8.0f} {v['chi2_amp_shot']:8.0f}  "
               f"A {v['amp_with_shot']:.2f}  N/model(l=1000) {v['shot_over_model_l1000']:.2f}")
     rec.data.update(model_dir=a.model_dir, n_blocks=len(out), n_rows=n, chi2_model=tot[0], chi2_amp=tot[1],
                     chi2_amp_shot=tot[2], blocks=out)
-    print(rec.write(f"25_scale_cuts_xshot{a.tag}{a.out_tag}"))
+    print(rec.write(f"25_scale_cuts_xshot{'' if a.pairs == 'xx' else '_' + a.pairs}{a.tag}{a.out_tag}"))
 
 
 AGN_TIER = Path.home() / "data/legacysurvey/dr11/south/bgsr21s/results/tier_xcorr/samples/agn"
@@ -382,6 +385,7 @@ def main(argv=None):
     ap.add_argument("--out-tag", default="")
     ap.add_argument("--agn-band", type=float, nargs=2, default=(0.2, 2.3), help="agneval: keV")
     ap.add_argument("--max-blocks", type=int, default=0, help="agneval: blocks per process (0: all)")
+    ap.add_argument("--pairs", default="xx", choices=("xx", "agnx"), help="xshot: X-ray x X-ray or AGN x X-ray")
     ap.add_argument("--nz", type=int, default=5, help="agnx: redshift nodes in the slice")
     ap.add_argument("--flux-dex", type=float, default=2.5, help="agnx: flux range above f_cut, dex")
     ap.add_argument("--flux-step", type=float, default=0.25, help="agnx: flux step, dex")
