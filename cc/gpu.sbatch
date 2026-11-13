@@ -4,7 +4,7 @@
 #
 #     sbatch cc/gpu.sbatch scripts/26_map_fit.py jac --it 1 --layout _s0
 #SBATCH --job-name=wp3feas-gpu
-#SBATCH --partition=gpu_h100
+#SBATCH --partition=gpu_v100
 #SBATCH --gpus=1
 #SBATCH --cpus-per-task=5
 #SBATCH --mem=60G
