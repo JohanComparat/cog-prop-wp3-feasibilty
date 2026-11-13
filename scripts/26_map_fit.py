@@ -55,13 +55,32 @@ def theta_of(it):
     return np.asarray(json.loads((it_dir(it) / "theta.json").read_text())["theta"])
 
 
+def shot_rows(vec, rows):
+    """The Poisson term of the discrete x X-ray blocks, a constant per block, on ``rows``: zero
+    unless WP3FEAS_SHOT names JSONs of ``25_scale_cuts.py agnshot`` (comma-separated), whose
+    ``samples[sample][band]["c_shot"]`` are added to the model."""
+    out = np.zeros(len(rows))
+    if not os.environ.get("WP3FEAS_SHOT"):
+        return out
+    c = {}
+    for f in os.environ["WP3FEAS_SHOT"].split(","):
+        for sid, bands in json.loads(Path(f).read_text())["samples"].items():
+            for band, v in bands.items():
+                c[(sid, band)] = c[(band, sid)] = v["c_shot"]
+    a_ = np.array([vec.index["a"][r].decode() for r in rows])
+    b_ = np.array([vec.index["b"][r].decode() for r in rows])
+    for k, (x, y) in enumerate(zip(a_, b_)):
+        out[k] = c.get((x, y), 0.0)
+    return out
+
+
 def system(D, slices=None):
     """``(r, iC blocks, rows)``: the residuals and per-block inverse covariances on the used rows."""
     meta = json.loads((S22.OUT / "meta.json").read_text())
     info = {"discrete": meta["discrete"], "pairs": [tuple(p) for p in meta["pairs"]], "ell": meta["ell"]}
     vec = load_vector()
     P, rows = projection(vec, info)
-    m = P @ D
+    m = P @ D + shot_rows(vec, rows)
     d = vec.data[rows]
     ell = vec.index["x"][rows]
     fin = (np.isfinite(d) & np.isfinite(m) & np.all(np.isfinite(vec.jk[:, rows]), axis=0)

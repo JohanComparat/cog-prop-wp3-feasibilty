@@ -41,7 +41,13 @@ NZ_FILE = DATA / "public_2026_nz.npz"
 
 def public_config(nz_file=NZ_FILE, **kw):
     """The JointConfig of public_2026 over the LS10 footprints, with the measured n(z)."""
+    import os
+
     from ggah_sens_study.joint.survey import JointConfig
+
+    if os.environ.get("WP3FEAS_AGN_BAND") and "agn_band" not in kw:
+        # the catalogue band of the eRASS1 L_X ("0.2,2.3"), in place of the build's 2-10 keV
+        kw["agn_band"] = tuple(float(x) for x in os.environ["WP3FEAS_AGN_BAND"].split(","))
 
     nz_file = Path(nz_file)
     if not nz_file.exists():

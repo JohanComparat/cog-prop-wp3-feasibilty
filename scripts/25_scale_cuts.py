@@ -151,7 +151,9 @@ def cmd_xshot(a):
     meas = json.loads(Path(a.shot_json).read_text())["samples"] if a.shot_json else {}
     pick = {"xx": lambda x, y: x.startswith("EVT") and y.startswith("EVT"),
             "agnx": lambda x, y: (x.startswith("ERO1_AGN") and y.startswith("EVT"))
-            or (y.startswith("ERO1_AGN") and x.startswith("EVT"))}[a.pairs]
+            or (y.startswith("ERO1_AGN") and x.startswith("EVT")),
+            "galx": lambda x, y: (x.startswith("LS11") and y.startswith("EVT"))
+            or (y.startswith("LS11") and x.startswith("EVT"))}[a.pairs]
     for name in sorted({f"{x}__{y}" for x, y in zip(A_, B_) if pick(x, y)}):
         x, y = name.split("__")
         sel = np.flatnonzero((A_ == x) & (B_ == y) & keep[rows])
@@ -161,7 +163,8 @@ def cmd_xshot(a):
         iC = s26.hartlap(vec.n_jk, sel.size) * np.linalg.pinv(s26.jk_cov(vec.jk[:, rows[sel]]))
         res = []
         if meas:
-            sid, band = x.split("_N_")[0] if x.startswith("ERO1") else y.split("_N_")[0], y if x.startswith("ERO1") else x
+            dsc = x if not x.startswith("EVT") else y
+            sid, band = dsc.split("_N_")[0], (y if dsc == x else x)[:13]
             c = next((v[band]["c_shot"] for k, v in meas.items() if k.startswith(sid) and band in v), None)
         for X in (None, m[sel][:, None], np.c_[m[sel], np.ones(sel.size)]):
             if X is None:
@@ -396,56 +399,60 @@ XFIELDS = Path.home() / "data/legacysurvey/dr11/south/bgsr21s/results/tier_xcorr
 
 
 def cmd_agnshot(a):
-    """The Poisson term of AGN x X-ray, measured from the photons: for the field
+    """The Poisson term of discrete x X-ray, measured from the photons: for the field
     delta_X = g / (alpha r) - 1 of sum_stat (g events, r randoms per pixel, alpha = sum g / sum r)
-    and an AGN sample of N members, C_shot = Omega_pix / N * sum_i (excess photons around member i)
-    / (alpha r at member i), the excess summed over the member's pixel and its rings up to
-    --rings (nside 1024: 3.4 arcmin pixels; ring 0 is the pixel alone), the expected count of
-    each pixel subtracted.  Compared with the constant of xshot --pairs agnx (--xshot JSON)."""
+    and a sample of N members, C_shot = Omega_pix / N * sum_i (excess photons around member i)
+    / (alpha r at member i), the excess summed over the member's pixel and its 8 neighbours
+    (--rings 1; nside 1024, 3.4 arcmin pixels; --rings 0: the pixel alone), the expected count of
+    each pixel subtracted.  --samples agn (slice-0 eRASS1 AGN) or gal (slice-0 LS11 samples);
+    --field-tag picks the fields (v0: none; v1: _Mb30_p55).  For the AGN of v0 the constant of
+    xshot --pairs agnx (--xshot JSON) is printed alongside."""
     import fitsio
     import healpy as hp
     rec = Record(__file__)
     nside = 1024
     om = hp.nside2pixarea(nside)
-    samples = sorted(AGN_TIER.glob("ERO1_AGN_LX_*_0.10_z_0.20_*_DATA.fits"))
-    fit = json.loads(Path(a.xshot).read_text())["blocks"] if a.xshot else {}
-    bands = sorted(f.name.split("_nside")[0] for f in XFIELDS.glob("EVT_*_nside1024.npz")
-                   if f.name.count("_") == 3 and int(f.name.split("_")[1]) >= 500)
+    root = AGN_TIER if a.samples == "agn" else AGN_TIER.parent / "gal"
+    pat = "ERO1_AGN_LX_*_0.10_z_0.20_*_DATA.fits" if a.samples == "agn" else "LS11_*_0.10_z_0.20_*_DATA.fits"
+    samples = sorted(root.glob(pat))
+    fit = json.loads(Path(a.xshot).read_text())["blocks"] if (a.xshot and a.samples == "agn"
+                                                              and not a.field_tag) else {}
+    tag = a.field_tag
+    bands = sorted({f.name[:13] for f in XFIELDS.glob(f"EVT_*{tag}_nside1024.npz")
+                    if f.name == f"{f.name[:13]}{tag}_nside1024.npz" and int(f.name[4:8]) >= 500})
+    fields = {}
+    for band in bands:
+        with np.load(XFIELDS / f"{band}{tag}_nside1024.npz") as z:
+            g, r = z["counts_g"].astype(float), z["counts_r"].astype(float)
+        on = r > 0
+        alpha = g[on].sum() / r[on].sum()
+        fields[band] = (np.where(on, g - alpha * r, 0.0), alpha * r, on)
+        rec.add_input(XFIELDS / f"{band}{tag}_nside1024.npz")
     out = {}
     for sf in samples:
         sid = sf.name[:-len("_DATA.fits")]
         d = fitsio.read(sf, columns=["RA", "DEC"])
         pix0 = hp.ang2pix(nside, d["RA"], d["DEC"], nest=True, lonlat=True)
-        nb = [pix0[:, None]]
+        nb = pix0[:, None]
         if a.rings >= 1:
-            nb.append(hp.get_all_neighbours(nside, d["RA"], d["DEC"], nest=True, lonlat=True).T)
-        if a.rings >= 2:
-            n1 = hp.get_all_neighbours(nside, nb[1].ravel(), nest=True).T.reshape(len(pix0), -1)
-            nb.append(n1)
+            nb = np.c_[nb, hp.get_all_neighbours(nside, d["RA"], d["DEC"], nest=True, lonlat=True).T]
         rec.add_input(sf)
         res = {}
-        for band in bands:
-            with np.load(XFIELDS / f"{band}_nside1024.npz") as z:
-                g, r = z["counts_g"].astype(float), z["counts_r"].astype(float)
-            on = r > 0
-            alpha = g[on].sum() / r[on].sum()
+        for band, (ex, mu, on) in fields.items():
             ok = on[pix0]
-            vals = []
-            for i in np.flatnonzero(ok):
-                ps = np.unique(np.concatenate([x[i] for x in nb]))
-                ps = ps[(ps >= 0) & on[ps]]
-                vals.append((g[ps] - alpha * r[ps]).sum() / (alpha * r[pix0[i]]))
-            c = om * float(np.mean(vals))
-            err = om * float(np.std(vals) / np.sqrt(len(vals)))
-            key = f"{sid}__{band}"
+            nbo = nb[ok]
+            e = np.where(nbo >= 0, ex[np.maximum(nbo, 0)], 0.0).sum(axis=1)
+            v = e / mu[pix0[ok]]
+            c, err = om * float(v.mean()), om * float(v.std() / np.sqrt(v.size))
             fk = next((k for k in fit if k.startswith(sid.split("_N_")[0]) and k.endswith(band)), None)
             res[band] = {"n": int(ok.sum()), "c_shot": c, "err": err,
                          "c_shot_fit": fit[fk]["shot"] if fk else None}
-            print(f"{sid[:30]} {band}: measured {c:.3e} +- {err:.1e}   fitted {res[band]['c_shot_fit'] or 0:.3e}",
-                  flush=True)
         out[sid] = res
-    rec.data.update(nside=nside, rings=a.rings, fields="v0 (LS11 footprint, no PS mask)", xshot=a.xshot, samples=out)
-    print(rec.write(f"25_scale_cuts_agnshot_r{a.rings}"))
+        b0 = res[bands[len(bands) // 2]]
+        print(f"{sid[:42]} n {b0['n']:7d}  {bands[len(bands) // 2]}: {b0['c_shot']:.3e} +- {b0['err']:.1e}", flush=True)
+    rec.data.update(nside=nside, rings=a.rings, samples_kind=a.samples, field_tag=tag, xshot=a.xshot or None,
+                    samples=out)
+    print(rec.write(f"25_scale_cuts_agnshot_{a.samples}{tag}_r{a.rings}"))
 
 
 def main(argv=None):
@@ -459,7 +466,9 @@ def main(argv=None):
     ap.add_argument("--out-tag", default="")
     ap.add_argument("--agn-band", type=float, nargs=2, default=(0.2, 2.3), help="agneval: keV")
     ap.add_argument("--max-blocks", type=int, default=0, help="agneval: blocks per process (0: all)")
-    ap.add_argument("--pairs", default="xx", choices=("xx", "agnx"), help="xshot: X-ray x X-ray or AGN x X-ray")
+    ap.add_argument("--pairs", default="xx", choices=("xx", "agnx", "galx"), help="xshot: X-ray x X-ray, AGN or galaxies x X-ray")
+    ap.add_argument("--samples", default="agn", choices=("agn", "gal"), help="agnshot")
+    ap.add_argument("--field-tag", default="", help="agnshot: X-ray field tag (v1: _Mb30_p55)")
     ap.add_argument("--rings", type=int, default=1, help="agnshot: pixel rings around each AGN")
     ap.add_argument("--xshot", default="results/25_scale_cuts_xshot_agnx_d3it8.json")
     ap.add_argument("--shot-json", default=None, help="xshot: the agnshot JSON, the measured Poisson term added")
