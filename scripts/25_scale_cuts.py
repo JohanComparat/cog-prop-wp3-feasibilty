@@ -148,6 +148,7 @@ def cmd_xshot(a):
     ix = vec.index
     A_, B_ = ix["a"][rows].astype(str), ix["b"][rows].astype(str)
     out, tot = {}, np.zeros(3)
+    meas = json.loads(Path(a.shot_json).read_text())["samples"] if a.shot_json else {}
     pick = {"xx": lambda x, y: x.startswith("EVT") and y.startswith("EVT"),
             "agnx": lambda x, y: (x.startswith("ERO1_AGN") and y.startswith("EVT"))
             or (y.startswith("ERO1_AGN") and x.startswith("EVT"))}[a.pairs]
@@ -159,6 +160,9 @@ def cmd_xshot(a):
         d = vec.data[rows[sel]]
         iC = s26.hartlap(vec.n_jk, sel.size) * np.linalg.pinv(s26.jk_cov(vec.jk[:, rows[sel]]))
         res = []
+        if meas:
+            sid, band = x.split("_N_")[0] if x.startswith("ERO1") else y.split("_N_")[0], y if x.startswith("ERO1") else x
+            c = next((v[band]["c_shot"] for k, v in meas.items() if k.startswith(sid) and band in v), None)
         for X in (None, m[sel][:, None], np.c_[m[sel], np.ones(sel.size)]):
             if X is None:
                 r = d - m[sel]
@@ -167,11 +171,25 @@ def cmd_xshot(a):
                 coef = np.linalg.solve(X.T @ iC @ X, X.T @ iC @ d)
                 r = d - X @ coef
             res.append((float(r @ iC @ r), [float(c) for c in coef]))
+        if meas and c is not None:
+            r = d - m[sel] - c
+            mm = m[sel]
+            amp = float(mm @ iC @ (d - c) / (mm @ iC @ mm))
+            ra = d - c - amp * mm
+            res += [(float(r @ iC @ r), []), (float(ra @ iC @ ra), [amp])]
         out[name] = {"n": int(sel.size), "chi2_model": res[0][0], "chi2_amp": res[1][0], "amp": res[1][1][0],
                      "chi2_amp_shot": res[2][0], "amp_with_shot": res[2][1][0], "shot": res[2][1][1],
                      "shot_over_model_l1000": res[2][1][1] / float(np.interp(1000, ix["x"][rows[sel]], m[sel]))}
+        if len(res) == 5:
+            out[name].update(shot_measured=c, chi2_model_meas=res[3][0], chi2_amp_meas=res[4][0], amp_meas=res[4][1][0])
         tot += [res[0][0], res[1][0], res[2][0]]
     n = sum(v["n"] for v in out.values())
+    if meas:
+        cm = [v for v in out.values() if "chi2_model_meas" in v]
+        print(f"measured shot added to {len(cm)} blocks ({sum(v['n'] for v in cm)} rows): chi2 "
+              f"{sum(v['chi2_model'] for v in cm):.0f} -> {sum(v['chi2_model_meas'] for v in cm):.0f}, "
+              f"with a free amplitude {sum(v['chi2_amp_meas'] for v in cm):.0f} "
+              f"(median amplitude {np.median([v['amp_meas'] for v in cm]):.2f})")
     print(f"{len(out)} {a.pairs} blocks, {n} rows: chi2 model {tot[0]:.0f}, + amplitude {tot[1]:.0f}, "
           f"+ amplitude and shot noise {tot[2]:.0f}")
     au = {k: v for k, v in out.items() if a.pairs == "agnx" or k.split("__")[0] == k.split("__")[1]}
@@ -374,9 +392,65 @@ def cmd_agneval(a):
     print(f"done in {rec.data.get('wall_time_s', 0)}")
 
 
+XFIELDS = Path.home() / "data/legacysurvey/dr11/south/bgsr21s/results/tier_xcorr/inputs/xray_fields"
+
+
+def cmd_agnshot(a):
+    """The Poisson term of AGN x X-ray, measured from the photons: for the field
+    delta_X = g / (alpha r) - 1 of sum_stat (g events, r randoms per pixel, alpha = sum g / sum r)
+    and an AGN sample of N members, C_shot = Omega_pix / N * sum_i (excess photons around member i)
+    / (alpha r at member i), the excess summed over the member's pixel and its rings up to
+    --rings (nside 1024: 3.4 arcmin pixels; ring 0 is the pixel alone), the expected count of
+    each pixel subtracted.  Compared with the constant of xshot --pairs agnx (--xshot JSON)."""
+    import fitsio
+    import healpy as hp
+    rec = Record(__file__)
+    nside = 1024
+    om = hp.nside2pixarea(nside)
+    samples = sorted(AGN_TIER.glob("ERO1_AGN_LX_*_0.10_z_0.20_*_DATA.fits"))
+    fit = json.loads(Path(a.xshot).read_text())["blocks"] if a.xshot else {}
+    bands = sorted(f.name.split("_nside")[0] for f in XFIELDS.glob("EVT_*_nside1024.npz")
+                   if f.name.count("_") == 3 and int(f.name.split("_")[1]) >= 500)
+    out = {}
+    for sf in samples:
+        sid = sf.name[:-len("_DATA.fits")]
+        d = fitsio.read(sf, columns=["RA", "DEC"])
+        pix0 = hp.ang2pix(nside, d["RA"], d["DEC"], nest=True, lonlat=True)
+        nb = [pix0[:, None]]
+        if a.rings >= 1:
+            nb.append(hp.get_all_neighbours(nside, d["RA"], d["DEC"], nest=True, lonlat=True).T)
+        if a.rings >= 2:
+            n1 = hp.get_all_neighbours(nside, nb[1].ravel(), nest=True).T.reshape(len(pix0), -1)
+            nb.append(n1)
+        rec.add_input(sf)
+        res = {}
+        for band in bands:
+            with np.load(XFIELDS / f"{band}_nside1024.npz") as z:
+                g, r = z["counts_g"].astype(float), z["counts_r"].astype(float)
+            on = r > 0
+            alpha = g[on].sum() / r[on].sum()
+            ok = on[pix0]
+            vals = []
+            for i in np.flatnonzero(ok):
+                ps = np.unique(np.concatenate([x[i] for x in nb]))
+                ps = ps[(ps >= 0) & on[ps]]
+                vals.append((g[ps] - alpha * r[ps]).sum() / (alpha * r[pix0[i]]))
+            c = om * float(np.mean(vals))
+            err = om * float(np.std(vals) / np.sqrt(len(vals)))
+            key = f"{sid}__{band}"
+            fk = next((k for k in fit if k.startswith(sid.split("_N_")[0]) and k.endswith(band)), None)
+            res[band] = {"n": int(ok.sum()), "c_shot": c, "err": err,
+                         "c_shot_fit": fit[fk]["shot"] if fk else None}
+            print(f"{sid[:30]} {band}: measured {c:.3e} +- {err:.1e}   fitted {res[band]['c_shot_fit'] or 0:.3e}",
+                  flush=True)
+        out[sid] = res
+    rec.data.update(nside=nside, rings=a.rings, fields="v0 (LS11 footprint, no PS mask)", xshot=a.xshot, samples=out)
+    print(rec.write(f"25_scale_cuts_agnshot_r{a.rings}"))
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=("mask", "chi2", "xshot", "agnx", "agneval"))
+    ap.add_argument("cmd", choices=("mask", "chi2", "xshot", "agnx", "agneval", "agnshot"))
     ap.add_argument("--kmax", type=float, default=1.0, help="h/Mpc")
     ap.add_argument("--drop-xray-auto", action="store_true")
     ap.add_argument("--tag", default="", help="mask variant (file 25_mask<tag>.npz)")
@@ -386,11 +460,14 @@ def main(argv=None):
     ap.add_argument("--agn-band", type=float, nargs=2, default=(0.2, 2.3), help="agneval: keV")
     ap.add_argument("--max-blocks", type=int, default=0, help="agneval: blocks per process (0: all)")
     ap.add_argument("--pairs", default="xx", choices=("xx", "agnx"), help="xshot: X-ray x X-ray or AGN x X-ray")
+    ap.add_argument("--rings", type=int, default=1, help="agnshot: pixel rings around each AGN")
+    ap.add_argument("--xshot", default="results/25_scale_cuts_xshot_agnx_d3it8.json")
+    ap.add_argument("--shot-json", default=None, help="xshot: the agnshot JSON, the measured Poisson term added")
     ap.add_argument("--nz", type=int, default=5, help="agnx: redshift nodes in the slice")
     ap.add_argument("--flux-dex", type=float, default=2.5, help="agnx: flux range above f_cut, dex")
     ap.add_argument("--flux-step", type=float, default=0.25, help="agnx: flux step, dex")
     a = ap.parse_args(argv)
-    {"mask": cmd_mask, "chi2": cmd_chi2, "xshot": cmd_xshot, "agnx": cmd_agnx, "agneval": cmd_agneval}[a.cmd](a)
+    {"mask": cmd_mask, "chi2": cmd_chi2, "xshot": cmd_xshot, "agnx": cmd_agnx, "agneval": cmd_agneval, "agnshot": cmd_agnshot}[a.cmd](a)
 
 
 if __name__ == "__main__":
