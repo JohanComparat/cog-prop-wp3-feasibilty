@@ -1,5 +1,16 @@
 # Where this stands, and what happens next
 
+## 2026-11-13 (night) — the AGN × X-ray Poisson term, measured from the photons
+
+**Done.**
+- `25_scale_cuts.py agnshot --rings 1` (`results/25_scale_cuts_agnshot_r1.json`): for each slice-0 AGN sample and X-ray band of v0, C_shot = Ω_pix × the mean over members of the excess photons in the member's pixel and its 8 neighbours (nside 1024) over the expected count at the member.
+  Measured over fitted (the free constant of `xshot --pairs agnx`), median per sample: 1.07 (L_X ≥ 10^42.5), 1.01 (10^43), 1.006 (10^43.5); range 0.94–1.20 over the 15 bands.
+- `25_scale_cuts.py xshot --pairs agnx --shot-json` (`results/25_scale_cuts_xshot_agnx_d3it8_meas.json`, λ = 3 it 8): the measured term added to the model, no free parameter: AGN × X-ray χ² 8 788 → 290 on 450 rows (251 with the constant free); with a free amplitude as well 272, median amplitude 0.85.
+
+**Next.**
+- The measured Poisson term as a fixed additive row term in `26_map_fit.system()` (a JSON named by `WP3FEAS_SHOT`), and `agn_band = (0.2, 2.3)` in `PUBLIC`, for the next chains; the same measurement for the v1 fields (the clean footprint) before the v1 chain uses it.
+- The galaxy × X-ray blocks may carry the same term (the photons of X-ray sources hosted by the galaxies): `agnshot` on the galaxy samples.
+
 ## 2026-11-13 (evening) — the AGN: eRASS1 selection and the AGN × X-ray shot noise
 
 **Done.**
