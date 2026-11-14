@@ -1,5 +1,21 @@
 # Where this stands, and what happens next
 
+## 2026-11-14 — the chains after the Poisson term
+
+**Done.**
+- All chains at CC ended their scheduled iterations (each last search kept a half step), χ² + prior:
+  `_shot` (AGN Poisson term, band 0.2–2.3 keV, λ = 3) 43 327 (it 8) → 39 988 → 37 554 → 35 866 (it 11) on 10 976 rows;
+  λ = 30 54 669 (it 7) → 53 490 (it 8); v1 61 233 (it 7) → 52 086 → 50 204 (it 9) on 9 788 rows.
+- χ² by block type at `_shot` it 11 (`results/25_scale_cuts_chi2_shot_it11.json`) against λ = 30 it 8 (`results/25_scale_cuts_chi2_d30_it8.json`), all rows (kept rows of the mask in brackets):
+  AGN × X-ray 1 875 (292) against 17 414 (8 657); X-ray × X-ray 11 037 against 10 679; galaxy × galaxy 6 996 (3 702) against 8 901 (4 808); shear × shear 6 026 against 6 086; galaxy × X-ray 2 449 (1 504) against 3 049 (1 795); shear × X-ray 2 606, galaxy × shear 1 684, AGN × galaxy 1 047, AGN × AGN 654, the rest below 600.
+  Total 35 858 (27 649 on the 9 251 kept rows) against 53 484 (36 984).
+- The AGN × X-ray misfit is gone; three block types hold 24 000 of the 35 858: X-ray × X-ray (the v0 footprint: the clean footprint of v1 is the answer, with the X-ray emissivity per band), galaxy × galaxy, shear × shear.
+
+**Next.**
+- Continue `_shot` (START=12) while it falls by > 2 per cent per iterate; start the v1 chain with the Poisson term of the v1 fields (`SHOT=..._agn_Mb30_p55_r1.json AGNBAND=0.2:2.3`, seeded from v1 it 9 as `_shot` was from λ = 3 it 8).
+- The λ = 3 and λ = 30 chains without the Poisson term are superseded.
+- Shear × shear (χ²/n 6.1): the covariance item (jackknife against Gaussian, per survey).
+
 ## 2026-11-13 (late night) — the Poisson term in the chains, on v1, and for the galaxies
 
 **Done.**

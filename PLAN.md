@@ -4,7 +4,7 @@
 
 ## Tracker
 
-*Status: `open`, `running`, `done (date, where)` or `dropped (reason)`. Last update: 2026-11-13 (AGN abundance with the eRASS1 selection; AGN × X-ray Poisson term found).*
+*Status: `open`, `running`, `done (date, where)` or `dropped (reason)`. Last update: 2026-11-14 (chain `_shot` with the AGN Poisson term: χ² + prior 35 866 at it 11).*
 
 | Item | What | Proposal item | Status |
 |---|---|---|---|
