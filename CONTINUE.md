@@ -11,8 +11,11 @@
 - The cross-survey blocks carry 5 450 of the 6 026 χ² of shear × shear, and fail their B-mode null at the same level: a systematic of the cross-survey spectra in sum_stat (the overlap footprints, the jackknife on small overlaps, or the shear conventions between surveys), not a model failure.
 - Chains submitted: `_shot` it 12–14 (step 63833556); v1 with the Poisson term of the v1 fields and the band: agneval at v1 it 9 (63833587), seed by `cc/seed_chain.py` (63833588), `_v1shot` it 10–12 (63833590 on).
 
+- `25 mask --drop-cross-shear`: the 36 cross-survey shear × shear blocks out (504 rows), masks `25_mask_xs.npz` (v0: 45 281 of 85 606 C_ℓ rows kept) and `25_mask_v1xs.npz` (v1, CC job 63833927: 25 031 of 50 416); `_v1shot` resubmitted with `MASK=25_mask_v1xs.npz` (step 63833928 on, after the seed 63833588); a placeholder base objective (`placeholder: true`) now accepts the seed whatever its rows.
+  `_shot` (v0, no mask) keeps the cross-survey blocks: its next restart takes `MASK=25_mask_xs.npz`.
+
 **Next.**
-- Cut the cross-survey shear × shear blocks (DES × HSC, KiDS × HSC) in `25 mask` until sum_stat explains their B modes; check the overlap areas and the shear sign conventions there.
+- sum_stat: the overlap areas and the shear sign conventions of DES × HSC and KiDS × HSC, until their B modes are null.
 - Covariance item E: the jackknife against an analytic covariance with the non-Gaussian and super-sample terms (ggah_mod) before the jackknife factor 1.6–2.0 in σ is read as real.
 
 ## 2026-11-14 — the chains after the Poisson term
