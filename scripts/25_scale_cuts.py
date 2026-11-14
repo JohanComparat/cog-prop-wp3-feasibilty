@@ -9,7 +9,9 @@
       chi at the mean redshift of its slice;
   (c) the pair is y x y (the noise of the y map is not subtracted in sum_stat);
   (d) the pair involves an X-ray field of v0 (to be replaced by the re-measurement on a clean
-      footprint, sum_stat tier_xray_background.py) when --drop-xray-auto is given: X-ray x X-ray only.
+      footprint, sum_stat tier_xray_background.py) when --drop-xray-auto is given: X-ray x X-ray only;
+  (e) the pair is shear x shear across two surveys (DES x HSC, KiDS x HSC) when --drop-cross-shear
+      is given: their B-mode null fails (chi2/n 7.9 and 15.1, scripts/30_cov_shear.py).
 The mask goes to WP3FEAS_DATA/25_mask.npz (keep, bool over the vector rows), which
 scripts/26_map_fit.py reads through WP3FEAS_MASK.
 """
@@ -69,6 +71,9 @@ def cmd_mask(a):
             r = "y x y (noise not subtracted)"
         elif a.drop_xray_auto and kind(A) == "xray" and kind(B) == "xray":
             r = "X-ray x X-ray of v0 (re-measured on a clean footprint)"
+        elif (a.drop_cross_shear and st[i] == "cl_sh" and "_bin" in A and "_bin" in B
+              and A.split("_")[0] != B.split("_")[0]):
+            r = "shear x shear across surveys (B-mode null fails, 30_cov_shear)"
         if r:
             keep[i] = False
             why[r] += 1
@@ -76,7 +81,8 @@ def cmd_mask(a):
     np.savez(out, keep=keep)
     n_cl = int(is_cl.sum())
     print(f"{n_cl} C_l rows, {int(keep[is_cl].sum())} kept; removed: {dict(why)} -> {out}")
-    rec.data.update(kmax_h_mpc=a.kmax, l_min=L_MIN, drop_xray_auto=a.drop_xray_auto, n_rows=int(ell.size),
+    rec.data.update(kmax_h_mpc=a.kmax, l_min=L_MIN, drop_xray_auto=a.drop_xray_auto,
+                    drop_cross_shear=a.drop_cross_shear, n_rows=int(ell.size),
                     n_cl_rows=n_cl, n_cl_kept=int(keep[is_cl].sum()), removed=dict(why), mask_file=str(out),
                     lmax_by_tracer={k: float(v) for k, v in sorted(lmax_of.items())})
     print(rec.write(f"25_scale_cuts_mask{a.tag}"))
@@ -460,6 +466,7 @@ def main(argv=None):
     ap.add_argument("cmd", choices=("mask", "chi2", "xshot", "agnx", "agneval", "agnshot"))
     ap.add_argument("--kmax", type=float, default=1.0, help="h/Mpc")
     ap.add_argument("--drop-xray-auto", action="store_true")
+    ap.add_argument("--drop-cross-shear", action="store_true", help="mask: shear x shear across surveys out")
     ap.add_argument("--tag", default="", help="mask variant (file 25_mask<tag>.npz)")
     ap.add_argument("--model-dir", default=None)
     ap.add_argument("--layout", default="_s0")
