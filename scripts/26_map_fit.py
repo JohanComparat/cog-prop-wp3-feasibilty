@@ -196,7 +196,9 @@ def cmd_step(a):
     if k >= 1:
         h = json.loads((it_dir(k) / "theta.json").read_text())
         ob = json.loads((it_dir(h["base"]) / "objective.json").read_text())
-        ok = (o["n_rows"] == ob["n_rows"] and o["chi2"] + o["prior"] < ob["chi2"] + ob["prior"])
+        # a chain seeded by cc/seed_chain.py starts at its first iterate whatever the base's rows
+        ok = ob.get("placeholder", False) or (o["n_rows"] == ob["n_rows"]
+                                              and o["chi2"] + o["prior"] < ob["chi2"] + ob["prior"])
         status = "accepted" if ok else "rejected"
         print(f"iterate {k}: {status}: chi2 + prior {o['chi2'] + o['prior']:.1f} on {o['n_rows']} rows, "
               f"base {h['base']}: {ob['chi2'] + ob['prior']:.1f} on {ob['n_rows']} rows", flush=True)

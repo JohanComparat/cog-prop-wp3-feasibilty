@@ -31,7 +31,7 @@ if band:
 h = json.loads((it / "theta.json").read_text())
 base = int(h.get("base", k - 1))
 ob = json.loads((src.parent / f"it{base}" / "objective.json").read_text())
-ob.update(chi2=1e30, prior=0.0, note=f"placeholder: the chain starts at it{k}, seeded from {src}")
+ob.update(chi2=1e30, prior=0.0, placeholder=True, note=f"placeholder: the chain starts at it{k}, seeded from {src}")
 (dst / f"it{base}").mkdir(parents=True, exist_ok=True)
 (dst / f"it{base}" / "objective.json").write_text(json.dumps(ob))
 print(f"seeded {it} (base it{base} placeholder)")
