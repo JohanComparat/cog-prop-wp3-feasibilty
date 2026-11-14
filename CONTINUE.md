@@ -1,5 +1,20 @@
 # Where this stands, and what happens next
 
+## 2026-11-14 (afternoon) — shear × shear covariance; the chains continued
+
+**Done.**
+- `scripts/30_cov_shear.py` (`results/30_cov_shear_data.json`, `results/30_cov_shear_shot_it11.json`), the 71 shear × shear blocks on ℓ ≥ 30, per survey pair (B-mode null χ²/n with the jackknife; median σ_jk/σ_Gauss; χ²/n of `_shot` it 11 with the jackknife, its diagonal, the Gaussian diagonal):
+  DES × DES 0.77, 1.61, 1.06, 1.00, 2.67 (140 rows); KiDS × KiDS 0.90, 2.01, 0.93, 0.78, 3.40 (210); HSC × HSC 0.77, 1.72, 1.61, 1.28, 3.83 (140);
+  DES × HSC 7.89, 2.84, 8.27, 8.02, 86.5 (224); KiDS × HSC 15.1, 2.34, 12.9, 13.2, 101 (280).
+  The Gaussian σ uses N = noise / ⟨w²⟩ (sum_stat stores the coupled bias N⟨w²⟩; implied σ_e 0.22–0.29) from `WP3FEAS_DATA/shear_noise.json` (dahu OAR 981392, the shear maps of `/bettik/.../tier_xcorr/inputs/shear_maps`), f_sky of the bin.
+- Within one survey the fit is good (χ²/n 0.93–1.61) and the B modes are null; the jackknife σ is 1.6–2.0 times the Gaussian one (non-Gaussian and super-sample terms, the small areas: 1 256, 475 and the KiDS deg² of the cropped maps).
+- The cross-survey blocks carry 5 450 of the 6 026 χ² of shear × shear, and fail their B-mode null at the same level: a systematic of the cross-survey spectra in sum_stat (the overlap footprints, the jackknife on small overlaps, or the shear conventions between surveys), not a model failure.
+- Chains submitted: `_shot` it 12–14 (step 63833556); v1 with the Poisson term of the v1 fields and the band: agneval at v1 it 9 (63833587), seed by `cc/seed_chain.py` (63833588), `_v1shot` it 10–12 (63833590 on).
+
+**Next.**
+- Cut the cross-survey shear × shear blocks (DES × HSC, KiDS × HSC) in `25 mask` until sum_stat explains their B modes; check the overlap areas and the shear sign conventions there.
+- Covariance item E: the jackknife against an analytic covariance with the non-Gaussian and super-sample terms (ggah_mod) before the jackknife factor 1.6–2.0 in σ is read as real.
+
 ## 2026-11-14 — the chains after the Poisson term
 
 **Done.**

@@ -4,7 +4,7 @@
 
 ## Tracker
 
-*Status: `open`, `running`, `done (date, where)` or `dropped (reason)`. Last update: 2026-11-14 (chain `_shot` with the AGN Poisson term: χ² + prior 35 866 at it 11).*
+*Status: `open`, `running`, `done (date, where)` or `dropped (reason)`. Last update: 2026-11-14 (shear × shear: the cross-survey blocks fail their B-mode null; chains `_shot` and `_v1shot` running).*
 
 | Item | What | Proposal item | Status |
 |---|---|---|---|
@@ -15,7 +15,7 @@
 | D | the public data vector `public_2026` (`tier_ls11_v0.h5`, LS DR11 × eRASS1 × ACT DR6 × DES/KiDS/HSC shear) fitted with `ggah_mod` 1.7.0: reader, Fisher per redshift slice, projection of the default model, null tests, scale cuts, MAP, NUTS | I19, I24 | running: reader (21), Fisher per slice (22: σ(S8) = 0.0054 joint, block-diagonal jackknife) and default-model projection (23: χ² = 208 869 over 17 748 rows) done 2026-11-07 in `results/`; MAP (26) running; null tests, scale cuts and NUTS open |
 | D0 | audit of the slice 0.1–0.2 of `public_2026` against the data themselves, external measurements and the default model (`scripts/20_vector_audit.py`, at CC-IN2P3) | I19 | running: tests 1a–1c and 4a done 2026-11-10 (`results/20_vector_audit_{data,abundance}.json`): the data are self-consistent; the model's abundances are not (BLUE ×1.5–2.5 too few, RED 10–10.5 ×1.5 too many, AGN ×8–11 too many); AGN 2026-11-13 (`results/25_scale_cuts_agnx.json`): ×1.3–1.8 too many once the counts use the AGN footprint and the model the catalogue band 0.2–2.3 keV and the eRASS1 completeness |
 | D1 | validation of the model's $C_\ell$ and $w(\theta)$ against its $w_p$ and the data, steps V1–V5 (`scripts/28_cl_validation.py`, at CC-IN2P3); MAP chains held until it passes | I19 | running: V1 and V2 passed 2026-11-10 (`results/28_cl_validation_v{1,2}.json`): the model's w_p fits the data w_p (0.83–1.19 on 1–30 Mpc) and its C_ℓ is the Limber integral of its P_gg to 0.1 per cent; the data C_ℓ of the galaxy autos is 1.8–2.6 times the model's, flat in ℓ for RED |
-| E | covariance: light-cone count, compression, sub-block validation, one-shell C3 and its five-shell scaling | N11, I12, I27 | open |
+| E | covariance: light-cone count, compression, sub-block validation, one-shell C3 and its five-shell scaling | N11, I12, I27 | running: shear × shear 2026-11-14 (`results/30_cov_shear_shot_it11.json`): jackknife σ 1.6–2.0 × Gaussian within a survey, fit χ²/n 0.93–1.61; the cross-survey blocks fail their B-mode null (χ²/n 7.9, 15.1) |
 | F | timing of one likelihood value and gradient, and of a NUTS chain for 212 parameters | N10, I13 | open |
 | G | synthesis: `results/wp3_feasibility_summary.json`, the B2 figures, N1, N6, N7 read from `ggah_sens_study` | N1, N6, N7 | open |
 | P | proposal edits: B2 WP3, Table 3, R3–R4, Gantt (PD4 from M16, T1–T2 at M40–M44, a science result per PhD), B1 lines | I17–I21 | open |
