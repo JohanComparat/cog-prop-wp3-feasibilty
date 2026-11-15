@@ -8,8 +8,8 @@
   (b) l > k_max chi(z) for any discrete tracer of the pair (k_max = 1 h/Mpc; 3 with --kmax 3),
       chi at the mean redshift of its slice;
   (c) the pair is y x y (the noise of the y map is not subtracted in sum_stat);
-  (d) the pair involves an X-ray field of v0 (to be replaced by the re-measurement on a clean
-      footprint, sum_stat tier_xray_background.py) when --drop-xray-auto is given: X-ray x X-ray only;
+  (d) the pair is X-ray x X-ray when --drop-xray-auto is given (on the clean footprint of v1
+      its chi2/n is 11.5 at _v1shot it 12: the model shape fails, under investigation);
   (e) the pair is shear x shear across two surveys (DES x HSC, KiDS x HSC) when --drop-cross-shear
       is given: their B-mode null fails (chi2/n 7.9 and 15.1, scripts/30_cov_shear.py).
 The mask goes to WP3FEAS_DATA/25_mask.npz (keep, bool over the vector rows), which
@@ -70,7 +70,7 @@ def cmd_mask(a):
         elif kind(A) == "y" and kind(B) == "y":
             r = "y x y (noise not subtracted)"
         elif a.drop_xray_auto and kind(A) == "xray" and kind(B) == "xray":
-            r = "X-ray x X-ray of v0 (re-measured on a clean footprint)"
+            r = "X-ray x X-ray (model shape fails on the clean footprint, under investigation)"
         elif (a.drop_cross_shear and st[i] == "cl_sh" and "_bin" in A and "_bin" in B
               and A.split("_")[0] != B.split("_")[0]):
             r = "shear x shear across surveys (B-mode null fails, 30_cov_shear)"
