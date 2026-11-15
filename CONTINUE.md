@@ -1,5 +1,18 @@
 # Where this stands, and what happens next
 
+## 2026-11-15 (evening) — final fit `_v1final` without X-ray × X-ray
+
+**Done.**
+- `_v1final` (v1, mask `_v1xsnx`, 7 244 rows) 12 669 (it 12) → 11 682 → 11 341 → 10 907 → 10 485 (it 16): the last iterate gains 3.9 per cent, so the chain has not converged.
+- χ² by block type at it 16 (`results/25_scale_cuts_chi2_v1xsnx_v1final_it16.json`) 10 477 on 7 244 rows (χ²/n 1.45): shear × X-ray 3 731 / 2 912, galaxy × X-ray 1 697 / 1 120, galaxy × galaxy 1 519 / 280, galaxy × shear 1 103 / 819, shear × shear 560 / 490, AGN × X-ray 554 / 480, the rest at χ²/n ≤ 1.3; the X-ray auto, out of the fit, is 29 424 on 2 040 rows.
+- Parameters at it 16 (`scripts/26_map_fit.py summary`, `results/26_map_summary_s0_v1final_it16.json`): Laplace errors from J^T C^-1 J + prior with the block-diagonal jackknife covariance.
+  Shifts from the defaults beyond 3σ: `mu_s` 0.621 → 0.198 ± 0.040 (−10.6σ), `mu_c` 1.531 → 0.608 ± 0.114 (−8.1σ), `z_anchor` 0.180 → 0.047 ± 0.025 (−5.3σ), `sigma_lnmstar` 0.734 → 1.070 ± 0.081 (+4.2σ), `szp@0` 1.000 → 0.936 ± 0.016 (−3.9σ), `beta` 0.605 → 0.236 ± 0.097 (−3.8σ), `alpha_in_n_var` −0.111 → 0.341 ± 0.122 (+3.7σ), `delta` 0.684 → 0.495 ± 0.054 (−3.5σ), `beta_sat` 0.658 → 0.822 ± 0.053 (+3.1σ).
+  Every shift is below 0.7 prior widths, and the data constrain all but the photo-z offsets far better than the priors do.
+
+**Next.**
+- Run 2–3 more iterates of `_v1final` (START=17) until the gain is below 2 per cent; the errors then with the χ²/n factor and with a non-Gaussian covariance (PLAN E).
+- The occupation shifts (`mu_s`, `mu_c`, `sigma_lnmstar`, `beta`, `delta`) checked against the tier w_p before any ggah_mod preset; `szp@0` (a 6 per cent shear calibration of source bin 0) against the survey's own prior.
+
 ## 2026-11-15 — chains `_shot` and `_v1shot` finished
 
 **Done.**
