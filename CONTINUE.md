@@ -13,6 +13,8 @@
 **Next.**
 - X-ray × X-ray on v1: data/model per band and ℓ at `_v1shot` it 12; which gas parameters or which missing term (Galactic foreground residual, unresolved point-source floor) closes it.
 - The chains stop here: a further iterate gains below 2 per cent.
+- Final fit without X-ray × X-ray (PLAN D2): mask `25_mask_v1xsnx.npz` (21 236 of 50 416 C_ℓ rows kept, 3 795 X-ray × X-ray rows out), chain `_v1final` seeded from `_v1shot` it 12 (`cc/seed_chain.py`), iterates 13–16 at CC (step 63860283 on, `DAMP=3 SHARDS=4`); then the parameter table against the defaults.
+- The X-ray auto investigation is PLAN D3.
 
 ## 2026-11-14 (afternoon) — shear × shear covariance; the chains continued
 
