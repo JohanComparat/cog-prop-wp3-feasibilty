@@ -446,9 +446,42 @@ def cmd_score(a):
     print(rec.write(f"26_map_score{a.it}{S22.LAYOUT}"))
 
 
+def cmd_summary(a):
+    """The fitted point of iterate ``it``: chi2 + prior, and per free parameter its value, the
+    default, the Laplace error sqrt(diag (J^T C^-1 J + prior)^-1) at the point, and the shift
+    from the default in that error and in prior widths."""
+    rec = Record(__file__)
+    meta, Jd, r, blocks, x = point(a.it, a.slices)
+    names = meta["names"]
+    th0 = np.asarray(meta["theta0"])
+    sp = prior_sigma(names)
+    o = objective(a.it, r, blocks, x, th0, sp)
+    A = np.zeros((len(names),) * 2)
+    for sel, iC in blocks:
+        A += Jd[sel].T @ iC @ Jd[sel]
+    Pr = np.where(np.isfinite(sp), 1.0 / sp ** 2, 0.0)
+    f = np.flatnonzero(np.array([n not in FIXED for n in names]) & (np.diag(A) + Pr > 0))
+    C = np.linalg.pinv(A[np.ix_(f, f)] + np.diag(Pr[f]))
+    err = np.sqrt(np.clip(np.diag(C), 0, None))
+    pars = {}
+    for j, i in enumerate(f):
+        pars[names[i]] = {"value": float(x[i]), "default": float(th0[i]), "error": float(err[j]),
+                          "prior_width": float(sp[i]) if np.isfinite(sp[i]) else None,
+                          "shift_in_error": float((x[i] - th0[i]) / err[j]) if err[j] > 0 else None,
+                          "shift_in_prior": float((x[i] - th0[i]) / sp[i]) if np.isfinite(sp[i]) else None,
+                          "data_over_prior": float(np.sqrt(A[i, i] / Pr[i])) if Pr[i] > 0 else None}
+    print(f"iterate {a.it}: chi2 {o['chi2']:.1f} + prior {o['prior']:.1f} on {o['n_rows']} rows")
+    print(f"{'parameter':22s} {'value':>10s} {'default':>10s} {'error':>9s} {'shift/err':>9s} {'shift/prior':>11s}")
+    for n, v in sorted(pars.items(), key=lambda kv: -abs(kv[1]["shift_in_error"] or 0)):
+        sp_ = f"{v['shift_in_prior']:11.2f}" if v["shift_in_prior"] is not None else "          -"
+        print(f"{n:22s} {v['value']:10.4f} {v['default']:10.4f} {v['error']:9.4f} {v['shift_in_error'] or 0:9.2f} {sp_}")
+    rec.data.update(it=a.it, map_tag=os.environ.get("WP3FEAS_MAP_TAG", ""), objective=o, parameters=pars)
+    print(rec.write(f"26_map_summary{S22.LAYOUT}{os.environ.get('WP3FEAS_MAP_TAG', '')}_it{a.it}"))
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=("step", "search", "jac", "eval", "score"))
+    ap.add_argument("cmd", choices=("step", "search", "jac", "eval", "score", "summary"))
     ap.add_argument("--it", type=int, default=1)
     ap.add_argument("--damp", type=float, default=1.0)
     ap.add_argument("--trust", type=float, default=1.0, help="largest change of a parameter per step, in prior widths")
@@ -462,7 +495,7 @@ def main(argv=None):
     ap.add_argument("--shard", default=None, help="search, jac: i/n, every n-th block from block i")
     a = ap.parse_args(argv)
     S22.set_layout(a.layout)
-    {"step": cmd_step, "search": cmd_search, "jac": cmd_jac, "eval": cmd_eval, "score": cmd_score}[a.cmd](a)
+    {"step": cmd_step, "search": cmd_search, "jac": cmd_jac, "eval": cmd_eval, "score": cmd_score, "summary": cmd_summary}[a.cmd](a)
 
 
 if __name__ == "__main__":
