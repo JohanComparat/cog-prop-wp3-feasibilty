@@ -4,7 +4,7 @@
 
 ## Tracker
 
-*Status: `open`, `running`, `done (date, where)` or `dropped (reason)`. Last update: 2026-11-14 (shear × shear: the cross-survey blocks fail their B-mode null; chains `_shot` and `_v1shot` running).*
+*Status: `open`, `running`, `done (date, where)` or `dropped (reason)`. Last update: 2026-11-15 (chains `_shot` and `_v1shot` finished; the X-ray auto of v1 holds 65 per cent of the χ²).*
 
 | Item | What | Proposal item | Status |
 |---|---|---|---|

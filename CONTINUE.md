@@ -1,5 +1,19 @@
 # Where this stands, and what happens next
 
+## 2026-11-15 — chains `_shot` and `_v1shot` finished
+
+**Done.**
+- `_shot` (v0, no mask) 35 866 (it 11) → 34 604 → 33 172 → 32 983 (it 14) on 10 976 rows: the last iterate gains 0.6 per cent, the chain has stalled.
+- `_v1shot` (v1, mask `_v1xs`, AGN Poisson term of the v1 fields, band 0.2–2.3 keV) 39 309 (it 9) → 37 665 → 36 807 → 36 176 (it 12) on 9 284 rows, against 44 660 for v1 it 9 on the same rows (`results/25_scale_cuts_chi2_v1xs_v1_it9.json`).
+- χ² by block type (`results/25_scale_cuts_chi2_xs_shot_it14.json`, `results/25_scale_cuts_chi2_v1xs_v1shot_it12.json`), kept rows:
+  `_shot` it 14 19 651 on 8 747 rows (χ²/n 2.25): X-ray × X-ray 10 026 / 1 800, galaxy × galaxy 2 664 / 280, shear × X-ray 2 623 / 2 730, galaxy × X-ray 990, galaxy × shear 984, shear × shear 601 / 490 (6 118 with the cross-survey blocks), AGN × X-ray 302 / 450;
+  `_v1shot` it 12 36 176 (χ²/n 3.9): X-ray × X-ray 23 513 / 2 040 (65 per cent of the total), shear × X-ray 4 260, galaxy × galaxy 2 434, galaxy × X-ray 2 005, galaxy × shear 1 073, AGN × X-ray 614 / 480 (5 948 at v1 it 9), shear × shear 598.
+- With the cross-survey shear blocks out and the AGN Poisson term in, the remaining misfit of v1 is the X-ray auto on the clean footprint (χ²/n 11.5): the shape of the model's X-ray emissivity per band.
+
+**Next.**
+- X-ray × X-ray on v1: data/model per band and ℓ at `_v1shot` it 12; which gas parameters or which missing term (Galactic foreground residual, unresolved point-source floor) closes it.
+- The chains stop here: a further iterate gains below 2 per cent.
+
 ## 2026-11-14 (afternoon) — shear × shear covariance; the chains continued
 
 **Done.**
