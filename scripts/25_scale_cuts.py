@@ -57,17 +57,22 @@ def cmd_mask(a):
     keep = np.ones(ell.size, bool)
     why = collections.Counter()
     lmax_of = {}
+    kmax_type = {}
+    for kv in filter(None, a.kmax_type.split(",")):
+        pair, v = kv.split("=")
+        kmax_type[tuple(sorted(pair.split("x")))] = float(v)
     for n in set(a_) | set(b_):
         t = parse_tracer(n) if n else {"z": None}
         if t.get("z") is not None and t["kind"] in ("gal", "agn"):
-            lmax_of[n] = a.kmax * chi_mpch(0.5 * sum(t["z"]))
+            lmax_of[n] = chi_mpch(0.5 * sum(t["z"]))  # chi(z), times k_max below
     for i in np.flatnonzero(is_cl):
         A, B = a_[i], b_[i] or a_[i]
+        km = kmax_type.get(tuple(sorted((str(kind(A)), str(kind(B))))), a.kmax)
         r = None
         if ell[i] < L_MIN:
             r = "l < 30"
-        elif min(lmax_of.get(A, np.inf), lmax_of.get(B, np.inf)) < ell[i]:
-            r = f"l > {a.kmax:g} h/Mpc chi(z)"
+        elif km * min(lmax_of.get(A, np.inf), lmax_of.get(B, np.inf)) < ell[i]:
+            r = f"l > {km:g} h/Mpc chi(z)"
         elif kind(A) == "y" and kind(B) == "y":
             r = "y x y (noise not subtracted)"
         elif a.drop_xray_auto and kind(A) == "xray" and kind(B) == "xray":
@@ -82,10 +87,10 @@ def cmd_mask(a):
     np.savez(out, keep=keep)
     n_cl = int(is_cl.sum())
     print(f"{n_cl} C_l rows, {int(keep[is_cl].sum())} kept; removed: {dict(why)} -> {out}")
-    rec.data.update(kmax_h_mpc=a.kmax, l_min=L_MIN, drop_xray_auto=a.drop_xray_auto,
+    rec.data.update(kmax_h_mpc=a.kmax, kmax_by_type=a.kmax_type, l_min=L_MIN, drop_xray_auto=a.drop_xray_auto,
                     drop_cross_shear=a.drop_cross_shear, n_rows=int(ell.size),
                     n_cl_rows=n_cl, n_cl_kept=int(keep[is_cl].sum()), removed=dict(why), mask_file=str(out),
-                    lmax_by_tracer={k: float(v) for k, v in sorted(lmax_of.items())})
+                    chi_by_tracer={k: float(v) for k, v in sorted(lmax_of.items())})
     print(rec.write(f"25_scale_cuts_mask{a.tag}"))
 
 
@@ -480,6 +485,7 @@ def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("cmd", choices=("mask", "chi2", "xshot", "agnx", "agneval", "nzeval", "agnshot"))
     ap.add_argument("--kmax", type=float, default=1.0, help="h/Mpc")
+    ap.add_argument("--kmax-type", default="", help="mask: k_max per block type, e.g. galxgal=0.15,agnxxray=0.5 (kinds gal, agn, shear, xray, y); others --kmax")
     ap.add_argument("--drop-xray-auto", action="store_true")
     ap.add_argument("--drop-cross-shear", action="store_true", help="mask: shear x shear across surveys out")
     ap.add_argument("--tag", default="", help="mask variant (file 25_mask<tag>.npz)")

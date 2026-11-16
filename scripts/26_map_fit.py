@@ -475,6 +475,8 @@ def cmd_summary(a):
     for n, v in sorted(pars.items(), key=lambda kv: -abs(kv[1]["shift_in_error"] or 0)):
         sp_ = f"{v['shift_in_prior']:11.2f}" if v["shift_in_prior"] is not None else "          -"
         print(f"{n:22s} {v['value']:10.4f} {v['default']:10.4f} {v['error']:9.4f} {v['shift_in_error'] or 0:9.2f} {sp_}")
+    np.savez(it_dir(a.it) / "laplace_cov.npz", names=np.array(names), theta=x, free=f, C=C,
+             chi2=o["chi2"], n_rows=o["n_rows"])
     rec.data.update(it=a.it, map_tag=os.environ.get("WP3FEAS_MAP_TAG", ""), objective=o, parameters=pars)
     print(rec.write(f"26_map_summary{S22.LAYOUT}{os.environ.get('WP3FEAS_MAP_TAG', '')}_it{a.it}"))
 
