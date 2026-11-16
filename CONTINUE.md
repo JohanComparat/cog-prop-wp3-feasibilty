@@ -1,5 +1,18 @@
 # Where this stands, and what happens next
 
+## 2026-11-16 (evening) — S(k) band of the fit at `_v1final` it 18
+
+**Done.**
+- `_v1final` it 17 and 18 at CC: χ² 10 295 and 10 101 on 7 244 rows (χ²/n 1.39 at it 18); it 19 queued.
+- `scripts/91_sk_band.py`: `cov` (at CC, job 64051607, run from a copy of the same code) wrote the full Laplace covariance of it 18 (79 free parameters, cosmology fixed) to `26_map_s0_v1final/it18/laplace_cov.npz`; `jac` (laptop, CPU, 9 min) S(k) = P_mm/P_mm^DMO of the closure at it 18 and at the defaults, z = 0 and 0.15, with its Jacobian; `band` propagated the covariance (`results/91_sk_band_s0_v1final_it18.json`).
+- At z = 0.15: S = 0.995 ± 0.006 (k = 0.3 h/Mpc), 0.955 ± 0.020 (1), 0.845 ± 0.021 (3), 0.778 ± 0.008 (10), against 0.983, 0.914, 0.853 and 0.798 at the defaults.
+  At k = 1 the variance is 87 per cent `log10_eps_agn_p` (−1.39 ± 0.76 at it 18); at k = 10 it is the outer slope of the gas density (`alpha_out_n`, `alpha_out_n_var`).
+- The band is first order, conditional on the fixed cosmology, and uses the block-diagonal jackknife covariance: a lower limit.
+- Talk slide "The data vector today" (`ggah_mod_technical_paper/slides/talk/make_sk_band.py`, `figures/sk_band.pdf`), with the 23 simulations of `wp2feas.sims`.
+
+**Next.**
+- Redo the band at the converged iterate; then with Ω_m and A_s free (S8 and S(k) jointly).
+
 ## 2026-11-16 (late) — scale cuts per block type
 
 **Done.**

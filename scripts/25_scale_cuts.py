@@ -20,6 +20,7 @@ scripts/26_map_fit.py reads through WP3FEAS_MASK.
 import argparse
 import collections
 import json
+import re
 import sys
 import time
 from pathlib import Path
@@ -60,7 +61,9 @@ def cmd_mask(a):
     kmax_type = {}
     for kv in filter(None, a.kmax_type.split(",")):
         pair, v = kv.split("=")
-        kmax_type[tuple(sorted(pair.split("x")))] = float(v)
+        m = re.fullmatch(r"(gal|agn|shear|xray|y)x(gal|agn|shear|xray|y)", pair)
+        assert m, f"--kmax-type: unknown block type {pair}"
+        kmax_type[tuple(sorted(m.groups()))] = float(v)
     for n in set(a_) | set(b_):
         t = parse_tracer(n) if n else {"z": None}
         if t.get("z") is not None and t["kind"] in ("gal", "agn"):
