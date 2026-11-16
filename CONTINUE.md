@@ -1,5 +1,17 @@
 # Where this stands, and what happens next
 
+## 2026-11-16 (late) — scale cuts per block type
+
+**Done.**
+- χ² at `_v1final` it 16 on masks with k_max = 0.5, 0.3, 0.2, 0.15, 0.1 h/Mpc (`25 mask --kmax`, then `chi2`; `results/25_scale_cuts_chi2_v1xsnx_k*_v1final_it16.json`).
+- Galaxy × galaxy: χ²/n 5.43 (k_max 1), 2.89 (0.5), 1.37 (0.3), 1.32 (0.2), 0.88 (0.15), 1.16 (0.1): the misfit lies at 1–3 Mpc/h.
+- Galaxy × shear stays at χ²/n 1.35–2.0 at every cut (amplitude 0.78).
+- Proposed selection per block type in `docs/scale_cuts.md` (PLAN D5): 6 551 on 5 551 rows (χ²/n 1.18).
+
+**Next.**
+- Implement a per-block-type k_max in `25 mask` and refit `_v1final` with it; compare the occupation shifts with the k_max = 1 fit.
+- `_v1final` it 19: summary and χ² breakdown.
+
 ## 2026-11-16 — galaxy × galaxy: photo-z and imaging weights
 
 **Done.**
