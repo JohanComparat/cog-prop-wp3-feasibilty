@@ -10,8 +10,17 @@
 - WEIGHT_SYS (sys_mapping, fitted on the parent 0.25-dex mass bins) enters the C_ℓ fields (`field_from_catalogue` counts the galaxies with it), the w(θ) catalogues and the n(z); 16th–84th percentile 0.97–1.02.
 - `25 nzeval` (galaxy blocks with `public_2026_nz_closure.npz`) at `_v1final` it 16: CC job 63909015.
 
+- `scripts/27_gal_systematics.py imaging` (CC, env ls11, nside 256, ℓ = 30–700; `results/27_gal_systematics_imaging.json`), the 11 slice-0 samples with N ≥ 1 000:
+  WEIGHT_SYS changes the noise-subtracted auto by 0.99–1.00 (median; 0.97–0.99 at ℓ = 34); a per-sample linear regression on the 15 sys_mapping templates removes < 0.3 per cent; the contamination c^T (C^tt)^-1 c is 5–7 per cent of the signal at ℓ = 34 (12 per cent for ALL 11.5–11.75), 1–2 per cent above ℓ = 60.
+  Shot noise: half-difference of two random halves over the analytic noise 0.99–1.01.
+  Slice-0 × slice-1 coefficient r_ℓ (median): ALL 0.132 / 0.098, BLUE 0.186 / 0.128, RED 0.093 / 0.075 (10.5–11, 11–11.5), against the n(z) prediction of `rsd` 0.141 / 0.100, 0.199 / 0.194, 0.103 / 0.080.
+- `27 rsd` (pyccl, dev-full; `results/27_gal_systematics_rsd.json`): RSD and the exact projection change the auto by ≤ 0.6 per cent at ℓ = 30 and ≤ 0.1 per cent above ℓ = 60.
+- `25 nzeval` at `_v1final` it 16 (`results/25_scale_cuts_nzeval_v1final_it16.json`; the closure n(z) drops 3 of 101 zones of the build, so the galaxy blocks are rebuilt, not swapped): galaxy × galaxy χ² 1 519 → 1 443 (amplitude 1.00 → 1.01), galaxy × X-ray 1 697 → 1 824, galaxy × AGN 241 → 258.
+- At it 16 the fitted occupation already absorbs the amplitude (galaxy × galaxy amplitude 1.00): its χ²/n of 5.4 is a shape misfit, and the occupation shifts (`mu_s`, `mu_c`, `sigma_lnmstar`) are how the fit reached that amplitude.
+
 **Next.**
-- Read the nzeval result; the rest of PLAN D4 (imaging crosses, outliers, RSD and exact projection, shot noise).
+- Galaxy × galaxy: data/model per sample and ℓ at it 16 (the shape left); the fitted occupation against the tier w_p (the shifts are real only if w_p still fits).
+- The model-free gap between the data w(θ) and the projected data w_p (1.14–1.75) is not explained by n(z), imaging, leakage, RSD or noise: check the w_p side (π_max, its estimator, the members used).
 
 ## 2026-11-15 (evening) — final fit `_v1final` without X-ray × X-ray
 

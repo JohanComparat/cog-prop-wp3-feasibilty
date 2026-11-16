@@ -350,7 +350,7 @@ def cmd_agneval(a):
         return any(meta["pairs"][k][0] in agn or meta["pairs"][k][1] in agn for k in pr)
 
     todo = [b for b in info["blocks"] if touches(b["rows"])]
-    print(f"{len(todo)} of {len(info['blocks'])} blocks hold an AGN", flush=True)
+    print(f"{len(todo)} of {len(info['blocks'])} blocks hold {'a galaxy' if nzev else 'an AGN'}", flush=True)
     done = 0
     for b in todo:
         path = out / f"{b['name']}.npz"
