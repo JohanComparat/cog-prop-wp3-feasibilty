@@ -335,7 +335,12 @@ def cmd_agneval(a):
     kw = {"nz_file": str(DATA / "public_2026_nz_closure.npz")} if nzev else {}
     f, info, _, _ = build_public(public_config(**s26.S22.LAYOUTS[a.layout], agn_band=band, **kw), jit=False,
                                  block_pairs=40, block_pairs_los=10)
-    assert [b["name"] for b in info["blocks"]] == meta["blocks"], "block layout differs from script 22"
+    if nzev:
+        # a narrower n(z) can leave a redshift zone (survey.layout, ZONE_MIN): the blocks differ, the
+        # output rows (discrete tracers, pairs, ell) do not
+        assert list(info["discrete"]) == meta["discrete"] and [list(p) for p in info["pairs"]] == meta["pairs"]
+    else:
+        assert [b["name"] for b in info["blocks"]] == meta["blocks"], "block layout differs from script 22"
 
     def touches(rows):
         rows = np.asarray(rows)
@@ -361,9 +366,12 @@ def cmd_agneval(a):
         jax.clear_caches()
     _, D0, _ = s26.S22._assemble(mdir, jac=False)
     D1 = D0.copy()
-    for b in todo:
-        with np.load(mdir / f"{b['name']}.npz") as z0, np.load(out / f"{b['name']}.npz") as z1:
+    old = [n for n in meta["blocks"] if touches(np.load(mdir / f"{n}.npz")["rows"])] if nzev else [b["name"] for b in todo]
+    for n in old:
+        with np.load(mdir / f"{n}.npz") as z0:
             D1[z0["rows"]] -= z0["D"]
+    for b in todo:
+        with np.load(out / f"{b['name']}.npz") as z1:
             D1[z1["rows"]] += z1["D"]
     vec = load_vector()
     res = {}

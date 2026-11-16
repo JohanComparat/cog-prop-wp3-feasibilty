@@ -77,6 +77,8 @@ def closure_corrected(d, n_min=1000):
     s = float(d["true_width"]) / float(d["closure_width"])
     dz = float(d["true_mean"]) - float(d["closure_mean"])
     ph2 = np.interp((z - m - dz) / s + m, z, ph, left=0.0, right=0.0) / s
+    # kept on the support of the measured table, so that the build's blocks stay the same
+    ph2 = np.where(nz > 0, np.maximum(ph2, 1e-9 * ph2.max()), 0.0)
     ph2 *= w / np.trapezoid(ph2, z)
     return z, np.asarray(d["nz_spec"], float) + ph2
 
