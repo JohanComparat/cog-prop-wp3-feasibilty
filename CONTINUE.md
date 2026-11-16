@@ -1,5 +1,18 @@
 # Where this stands, and what happens next
 
+## 2026-11-16 — galaxy × galaxy: photo-z and imaging weights
+
+**Done.**
+- `_v1final` iterates 17–19 submitted (step 63908426 on).
+- `szp@0` is the width scale of the slice-0 photometric n(z) (not a shear calibration): 0.936 ± 0.016 at it 16, a narrower n(z).
+- n(z) of the tier samples (sum_stat `tier_nz.py`): spectroscopic members plus a kNN calibration of the photo-z members on spectroscopic galaxies; its closure test (spectroscopic analogues of the photo-z members) finds the estimated photo-z part broader than the true redshifts by 0–20 per cent (RED 10–10.5: width 0.0309 against 0.0258; BLUE 10–10.5: 0.0374 against 0.0333).
+- `wp3feas.nz.closure_corrected`: the photo-z part shifted and stretched by the closure; ∫n² rises by 1.143 (RED 10–10.5), 1.094 (BLUE 10–10.5), 1.079 (ALL 10–10.5), ≤ 1.07 elsewhere: the n(z) explains at most a factor 1.14 of the 1.8–2.6.
+- WEIGHT_SYS (sys_mapping, fitted on the parent 0.25-dex mass bins) enters the C_ℓ fields (`field_from_catalogue` counts the galaxies with it), the w(θ) catalogues and the n(z); 16th–84th percentile 0.97–1.02.
+- `25 nzeval` (galaxy blocks with `public_2026_nz_closure.npz`) at `_v1final` it 16: CC job 63909015.
+
+**Next.**
+- Read the nzeval result; the rest of PLAN D4 (imaging crosses, outliers, RSD and exact projection, shot noise).
+
 ## 2026-11-15 (evening) — final fit `_v1final` without X-ray × X-ray
 
 **Done.**
