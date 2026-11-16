@@ -21,6 +21,8 @@
 **Next.**
 - Galaxy × galaxy: data/model per sample and ℓ at it 16 (the shape left); the fitted occupation against the tier w_p (the shifts are real only if w_p still fits).
 - The model-free gap between the data w(θ) and the projected data w_p (1.14–1.75) is not explained by n(z), imaging, leakage, RSD or noise: check the w_p side (π_max, its estimator, the members used).
+- w_p check (sum_stat `scripts/tier_ls11_wp_vs_ls10.py`, `docs/figures/tier_ls11_wp_vs_ls10_{all,blue}.png`): the tier w_p of slice 0 against the LS10 r < 19.5 volume-limited mass bins (0.05 < z < 0.18, N_gal-weighted over the 0.2-dex bins inside each tier bin), median LS11/LS10 on 1–10 Mpc: ALL 0.95, 0.86, 0.86 (10–10.5, 10.5–11, 11–11.5); BLUE 1.03, 1.03, 0.88.
+  The ALL tier w_p is 5–14 per cent below LS10, the size of the w(θ) / projected-w_p gap of ALL and RED (1.14–1.28); for BLUE the w_p agree, and their gap (1.5–1.75) stays.
 
 ## 2026-11-15 (evening) — final fit `_v1final` without X-ray × X-ray
 
