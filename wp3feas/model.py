@@ -49,10 +49,12 @@ def public_config(nz_file=NZ_FILE, **kw):
         # the catalogue band of the eRASS1 L_X ("0.2:2.3"), in place of the build's 2-10 keV
         kw["agn_band"] = tuple(float(x) for x in os.environ["WP3FEAS_AGN_BAND"].replace(",", ":").split(":"))
 
+    if os.environ.get("WP3FEAS_NZ_FILE") and nz_file == NZ_FILE:
+        nz_file = os.environ["WP3FEAS_NZ_FILE"]
     nz_file = Path(nz_file)
     if not nz_file.exists():
         nz_file.parent.mkdir(parents=True, exist_ok=True)
-        write_nz_file(nz_file)
+        write_nz_file(nz_file, closure="closure" in nz_file.stem)
     if len(kw.get("shells", PUBLIC["shells"])) == 1:
         # a one-shell build names its tracers without the "@0" suffix: alias the slice-0 tables
         # (without this the photometric kernels fall back to the smoothed top-hat of photo_sigma_z0)

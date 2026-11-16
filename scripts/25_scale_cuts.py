@@ -2,6 +2,7 @@
 
     python scripts/25_scale_cuts.py mask                 # the row mask and its reasons
     python scripts/25_scale_cuts.py chi2 --model-dir DIR --layout _s0   # chi2 by block type, masked and not
+    python scripts/25_scale_cuts.py nzeval --model-dir DIR --layout _s0  # galaxy blocks with the closure-corrected n(z)
 
 ``mask`` removes a row of the vector when
   (a) l < L_MIN (mask mode coupling);
@@ -326,11 +327,13 @@ def cmd_agneval(a):
     th = np.asarray(json.loads((mdir / "theta.json").read_text())["theta"])
     meta = json.loads((s26.S22.OUT / "meta.json").read_text())
     n_disc, n_ell = len(meta["discrete"]), len(meta["ell"])
-    agn = {n for n in meta["discrete"] if n.startswith("a")}
-    out = DATA / f"25_agnband{a.out_tag}"
+    nzev = a.cmd == "nzeval"
+    agn = {n for n in meta["discrete"] if n.startswith("g" if nzev else "a")}
+    out = DATA / (f"25_nzeval{a.out_tag}" if nzev else f"25_agnband{a.out_tag}")
     out.mkdir(exist_ok=True)
     band = tuple(a.agn_band)
-    f, info, _, _ = build_public(public_config(**s26.S22.LAYOUTS[a.layout], agn_band=band), jit=False,
+    kw = {"nz_file": str(DATA / "public_2026_nz_closure.npz")} if nzev else {}
+    f, info, _, _ = build_public(public_config(**s26.S22.LAYOUTS[a.layout], agn_band=band, **kw), jit=False,
                                  block_pairs=40, block_pairs_los=10)
     assert [b["name"] for b in info["blocks"]] == meta["blocks"], "block layout differs from script 22"
 
@@ -374,7 +377,8 @@ def cmd_agneval(a):
     for sel, iC in res["built"][2]:
         r0 = prow[sel[0]]
         A_, B_ = vec.index["a"][r0].decode(), vec.index["b"][r0].decode()
-        if not (A_.startswith("ERO1_AGN") or B_.startswith("ERO1_AGN")):
+        pre = "LS11_" if nzev else "ERO1_AGN"
+        if not (A_.startswith(pre) or B_.startswith(pre)):
             continue
         name = "|".join(vec.index[k][r0].decode() for k in ("stat", "a", "b", "survey"))
         d = vec.data[prow[sel]]
@@ -384,8 +388,9 @@ def cmd_agneval(a):
             amp = float(m @ iC @ d / (m @ iC @ m))
             ra = d - amp * m
             row[tag] = {"chi2": float(r @ iC @ r), "amp": amp, "chi2_amp": float(ra @ iC @ ra)}
-        other = B_ if A_.startswith("ERO1_AGN") else A_
-        typ = "AGN x " + (kind(other) or "?") if A_ != B_ else "AGN x AGN"
+        other = B_ if A_.startswith(pre) else A_
+        lab = "gal" if nzev else "AGN"
+        typ = f"{lab} x " + (kind(other) or "?") if A_ != B_ else f"{lab} x {lab}"
         tot[typ] += [row["built"]["chi2"], row["band"]["chi2"], row["n"], 1]
         row["type"] = typ
         blocks_out[name] = row
@@ -397,7 +402,9 @@ def cmd_agneval(a):
     rec.data.update(model_dir=str(mdir), agn_band=band, n_blocks_eval=len(todo),
                     by_type={t: {"chi2_built": v[0], "chi2_band": v[1], "n_rows": int(v[2]), "n_blocks": int(v[3])}
                              for t, v in tot.items()}, blocks=blocks_out)
-    print(rec.write(f"25_scale_cuts_agneval{a.out_tag}"))
+    if nzev:
+        rec.data.update(nz_file=kw["nz_file"], note="'band' is the closure-corrected n(z) of the galaxies")
+    print(rec.write(f"25_scale_cuts_{a.cmd}{a.out_tag}"))
     print(f"done in {rec.data.get('wall_time_s', 0)}")
 
 
@@ -463,7 +470,7 @@ def cmd_agnshot(a):
 
 def main(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=("mask", "chi2", "xshot", "agnx", "agneval", "agnshot"))
+    ap.add_argument("cmd", choices=("mask", "chi2", "xshot", "agnx", "agneval", "nzeval", "agnshot"))
     ap.add_argument("--kmax", type=float, default=1.0, help="h/Mpc")
     ap.add_argument("--drop-xray-auto", action="store_true")
     ap.add_argument("--drop-cross-shear", action="store_true", help="mask: shear x shear across surveys out")
@@ -483,7 +490,7 @@ def main(argv=None):
     ap.add_argument("--flux-dex", type=float, default=2.5, help="agnx: flux range above f_cut, dex")
     ap.add_argument("--flux-step", type=float, default=0.25, help="agnx: flux step, dex")
     a = ap.parse_args(argv)
-    {"mask": cmd_mask, "chi2": cmd_chi2, "xshot": cmd_xshot, "agnx": cmd_agnx, "agneval": cmd_agneval, "agnshot": cmd_agnshot}[a.cmd](a)
+    {"mask": cmd_mask, "chi2": cmd_chi2, "xshot": cmd_xshot, "agnx": cmd_agnx, "agneval": cmd_agneval, "nzeval": cmd_agneval, "agnshot": cmd_agnshot}[a.cmd](a)
 
 
 if __name__ == "__main__":

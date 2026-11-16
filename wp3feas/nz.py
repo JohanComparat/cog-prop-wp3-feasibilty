@@ -58,19 +58,43 @@ def shear_tables():
     return out
 
 
-def tracer_tables():
-    """``{build name: (z, n)}`` of the galaxy and AGN samples, from tier_xcorr/nz/*_nz.npz."""
+def closure_corrected(d, n_min=1000):
+    """The n(z) of a galaxy table with its photo-z part shifted and stretched by the closure test
+    of sum_stat ``tier_nz.py``: the estimated n(z) of the spectroscopic analogues of the photo-z
+    members has mean ``closure_mean`` and width ``closure_width``, their true redshifts
+    ``true_mean`` and ``true_width``; the photo-z part moves by the difference of the means and
+    scales about its own mean by the ratio of the widths.  Tables without a closure test, or
+    with fewer than ``n_min`` analogues, are returned as they are.  The true redshifts are
+    truncated at the parents' edges, so the stretch is an upper bound on the correction."""
+    z, nz = np.asarray(d["z"], float), np.asarray(d["nz"], float)
+    if "closure_width" not in d.files or int(d["n_closure"]) < n_min:
+        return z, nz
+    ph = np.asarray(d["nz_phot"], float)
+    w = np.trapezoid(ph, z)
+    if w <= 0:
+        return z, nz
+    m = np.trapezoid(z * ph, z) / w
+    s = float(d["true_width"]) / float(d["closure_width"])
+    dz = float(d["true_mean"]) - float(d["closure_mean"])
+    ph2 = np.interp((z - m - dz) / s + m, z, ph, left=0.0, right=0.0) / s
+    ph2 *= w / np.trapezoid(ph2, z)
+    return z, np.asarray(d["nz_spec"], float) + ph2
+
+
+def tracer_tables(closure=False):
+    """``{build name: (z, n)}`` of the galaxy and AGN samples, from tier_xcorr/nz/*_nz.npz; with
+    ``closure`` the galaxy tables carry the closure correction (:func:`closure_corrected`)."""
     out = {}
     for f in sorted((TIER / "nz").glob("*_nz.npz")):
         name = build_name(f.name[: -len("_nz.npz")])
         if name is not None:
             with np.load(f) as d:
-                out[name] = _norm(d["z"], d["nz"])
+                out[name] = _norm(*closure_corrected(d)) if closure else _norm(d["z"], d["nz"])
     return out
 
 
-def write_nz_file(path):
+def write_nz_file(path, closure=False):
     """Write every table to ``path`` (an .npz) and return the names it holds."""
-    tab = {**tracer_tables(), **shear_tables()}
+    tab = {**tracer_tables(closure), **shear_tables()}
     np.savez(path, **{f"{n}.{k}": v for n, (z, nz) in tab.items() for k, v in (("z", z), ("nz", nz))})
     return sorted(tab)
