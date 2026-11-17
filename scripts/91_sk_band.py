@@ -40,6 +40,8 @@ S22 = importlib.import_module("22_fisher_public")
 
 
 def tag_of(a):
+    if getattr(a, "at_default", False):
+        return f"{a.layout}_default"
     return f"{a.layout}{os.environ.get('WP3FEAS_MAP_TAG', '')}_it{a.it}"
 
 
@@ -62,9 +64,12 @@ def cmd_jac(a):
     J = M._Joint(fid, cfg, "closure")
     names = list(M.names(cfg))
     th0 = np.asarray(M.theta0(fid, cfg))
-    point = json.loads((it_dir(a) / "theta.json").read_text())
-    assert point["names"] == names, "the iterate's parameters differ from the build's"
-    x = np.asarray(point["theta"])
+    if a.at_default:
+        x = th0.copy()
+    else:
+        point = json.loads((it_dir(a) / "theta.json").read_text())
+        assert point["names"] == names, "the iterate's parameters differ from the build's"
+        x = np.asarray(point["theta"])
     opts = fid.pk_options
 
     def S(theta, z):
@@ -154,15 +159,47 @@ def cmd_band(a):
     print(rec.write(f"91_sk_band{tag_of(a)}"))
 
 
+def cmd_forecast(a):
+    """The band of S at the defaults from the draws of a forecast (script 92 forecast), to first
+    order: sigma_S = std over the draws of G (theta_draw - theta_0); a parameter the forecast does
+    not hold stays at its default."""
+    rec = Record(__file__)
+    jpath = DATA / f"91_sk_band{a.layout}_default.npz"
+    dpath = DATA / f"92_draws_{a.draws}.npz"
+    J, D = np.load(jpath), np.load(dpath)
+    names, th0 = list(J["names"]), J["theta0"]
+    dn = [str(n) for n in D["names"]]
+    cols = [(names.index(n), j) for j, n in enumerate(dn) if n in names]
+    dth = np.zeros((D["draws"].shape[0], len(names)))
+    for i, j in cols:
+        dth[:, i] = D["draws"][:, j] - D["centre"][j]
+    res = {}
+    for iz, z in enumerate(J["z"]):
+        dS = dth @ J["G"][iz].T
+        sig = dS.std(axis=0)
+        res[f"{z:g}"] = {"S": J["S_default"][iz].tolist(), "S_default": J["S_default"][iz].tolist(),
+                         "sigma": sig.tolist()}
+        for kk in (0.3, 1.0, 3.0, 10.0):
+            i = int(np.argmin(np.abs(np.log(J["k"] / kk))))
+            print(f"z {z:g} k {J['k'][i]:6.2f}: S {J['S_default'][iz][i]:.4f} +- {sig[i]:.4f}")
+    rec.inputs += [str(jpath), str(dpath)]
+    rec.data.update(draws=a.draws, n_draws=int(dth.shape[0]), n_matched=len(cols),
+                    unmatched_fixed=[n for n in names if n not in dn], k=J["k"].tolist(),
+                    z=J["z"].tolist(), cosmology="fixed in S's Jacobian", band=res)
+    print(rec.write(f"91_sk_band_forecast_{a.draws}"))
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=("cov", "jac", "band"))
-    ap.add_argument("--it", type=int, required=True)
+    ap.add_argument("cmd", choices=("cov", "jac", "band", "forecast"))
+    ap.add_argument("--it", type=int, default=0)
+    ap.add_argument("--at-default", action="store_true", help="jac: at the defaults, not at an iterate")
+    ap.add_argument("--draws", default="forecast_S5_lsst_2030_k10", help="forecast: the case of script 92")
     ap.add_argument("--layout", default="_s0", choices=list(S22.LAYOUTS))
     ap.add_argument("--z", type=float, nargs="+", default=[0.0, 0.15])
     a = ap.parse_args(argv)
     S22.set_layout(a.layout)
-    {"cov": cmd_cov, "jac": cmd_jac, "band": cmd_band}[a.cmd](a)
+    {"cov": cmd_cov, "jac": cmd_jac, "band": cmd_band, "forecast": cmd_forecast}[a.cmd](a)
 
 
 if __name__ == "__main__":

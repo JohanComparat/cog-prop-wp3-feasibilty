@@ -13,6 +13,18 @@
 **Next.**
 - Redo the band at the converged iterate; then with Ω_m and A_s free (S8 and S(k) jointly).
 
+## 2026-11-17 — refit with the scale cuts per block type; Paper II figures with bands
+
+**Done.**
+- `25 mask --kmax-type` (k_max per block type, docs/scale_cuts.md); chain `_cuts` seeded from `_v1final` it 18, converged at it 21: χ² 6 260 on 5 551 rows (χ²/n 1.13); galaxy × galaxy 45 / 84, galaxy × X-ray 570 / 560; shear × X-ray 3 629 / 2 912 the largest.
+- Shifts beyond 3σ from the defaults: `mu_s` −8.6σ, `z_anchor` −3.6σ, `alpha_in_n_var` +3.1σ (`results/26_map_summary_s0_cuts_it21.json`).
+- S(k) at z = 0.15 (`scripts/91_sk_band.py`, Laplace, cosmology fixed): 0.965 ± 0.018 at k = 1 h/Mpc against 0.914 at the defaults; the 2030 forecast (S5_lsst_2030, T5, k_max 10, C1+SSC) ± 0.0046 (`91_sk_band_forecast_forecast_S5_lsst_2030_k10.json`).
+- `scripts/92_posterior_draws.py`: parameter draws of the Laplace posterior and of the 2030 forecast; ggah_mod_technical_paper `make_figures_bands.py` redraws the Paper II data figures with bands (`figures/*_today.pdf`, `*_2030.pdf`).
+- At the best fit the LS10 SMF falls to model/data 0.37–0.68 below 10^11.2 and 1.92 at 11.4–12, and the group X-ray luminosity and temperature fall below the data under 10^13 M☉: the defaults stay.
+
+**Next.**
+- A fit with the SMF and n̄, w_p and the gas scaling relations as data terms; then a named preset if it holds.
+
 ## 2026-11-16 (late) — scale cuts per block type
 
 **Done.**
