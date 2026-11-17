@@ -16,7 +16,8 @@ cosmology held fixed (the first pass fits the occupation, AGN, energetics and nu
 ``eval`` evaluates the full model at the new point block by block (resumable).
 ``score`` gives chi^2 at the new point and the per-block table of script 23.
 The covariance is script 22's (jackknife per block, Hartlap); y x y is left out
-(its instrument noise is not subtracted).
+(its instrument noise is not subtracted).  ``WP3FEAS_SYS`` (a ``28_sys_floor*_sigma.npz``) adds
+a systematic floor per row in quadrature.
 """
 
 import argparse
@@ -91,6 +92,8 @@ def system(D, slices=None):
         fin &= np.isin(tag, slices)
     if os.environ.get("WP3FEAS_MASK"):   # a row mask of scripts/25_scale_cuts.py (keep over the vector rows)
         fin &= np.load(os.environ["WP3FEAS_MASK"])["keep"][rows]
+    # a systematic floor per row (scripts/28_sys_floor.py), added in quadrature to C / h
+    sys_sig = np.load(os.environ["WP3FEAS_SYS"])["sigma"][rows] if os.environ.get("WP3FEAS_SYS") else None
     out = []
     for k in np.unique(key[fin]):
         if k in EXCLUDE:
@@ -99,7 +102,10 @@ def system(D, slices=None):
         C = jk_cov(vec.jk[:, rows[sel]])
         h = hartlap(vec.n_jk, sel.size)
         if h > 0 and np.all(np.isfinite(C)):
-            out.append((sel, h * np.linalg.pinv(C)))
+            if sys_sig is None:
+                out.append((sel, h * np.linalg.pinv(C)))
+            else:
+                out.append((sel, np.linalg.pinv(C / h + np.diag(sys_sig[sel] ** 2))))
     return P, d - m, out
 
 

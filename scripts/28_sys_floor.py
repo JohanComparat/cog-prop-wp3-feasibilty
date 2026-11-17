@@ -16,7 +16,10 @@ under the priors of ``26_map_fit.py``; f and the fit are iterated until f moves 
 1e-4.  It writes the point, the Laplace covariance (J^T C^-1 J + P)^-1 without and with the
 floors, and with the floors and each block type left out in turn, to
 ``WP3FEAS_DATA/28_sys_floor<tag>_it<k>.npz`` and the table to
-``results/28_sys_floor<tag>_it<k>.json``.
+``results/28_sys_floor<tag>_it<k>.json``, and the floor of every row of the vector,
+f m at iterate ``it``, to ``28_sys_floor<tag>_it<k>_sigma.npz``: ``26_map_fit.py`` adds it to
+the covariance when ``WP3FEAS_SYS`` names that file, so that the chain refits with the floors
+held fixed (the linearised refit here is only a guide: it leaves the range of the Jacobian).
 
 ``band`` propagates the three to S(k, z) with the Jacobian of ``91_sk_band.py jac`` at the same
 iterate (first order, cosmology fixed): the band without and with the floors, and for each block
@@ -87,7 +90,7 @@ def blocks_of(s26, D):
         h = hartlap(vec.n_jk, sel.size)
         if h > 0 and np.all(np.isfinite(C)):
             out.append({"sel": sel, "C": C / h, "type": typ(rows[sel[0]])})
-    return P, d, m, out
+    return P, d, m, out, rows
 
 
 def weights(blocks, m, f):
@@ -138,7 +141,7 @@ def cmd_fit(a):
     rec = Record(__file__)
     it = s26.it_dir(a.it)
     meta, D, Jfull = s26.S22._assemble(it)
-    P, d, m0, blocks = blocks_of(s26, D)
+    P, d, m0, blocks, rows = blocks_of(s26, D)
     J = P @ Jfull
     names = meta["names"]
     th0 = np.asarray(meta["theta0"])
@@ -190,6 +193,12 @@ def cmd_fit(a):
     C_base = lap(W0)
     C_sys = lap(Wf)
     C_drop = np.stack([lap(Wf, skip=(t,)) for t in types])
+    # the floor per row of the vector, f m at this iterate, for 26_map_fit.py (WP3FEAS_SYS)
+    from wp3feas.vector import load_vector
+    sig = np.zeros(load_vector().data.size)
+    for b in blocks:
+        sig[rows[b["sel"]]] = f.get(b["type"], 0.0) * np.abs(m0[b["sel"]])
+    np.savez(DATA / f"28_sys_floor{tag(a)}_sigma.npz", sigma=sig, floors=json.dumps(f))
     np.savez(DATA / f"28_sys_floor{tag(a)}.npz", names=np.array(names), theta=x0 + dx, theta_it=x0,
              theta0=th0, free=free, C_base=C_base, C_sys=C_sys, C_drop=C_drop, types=np.array(types))
     big = sorted(free, key=lambda i: -abs(dx[i] / np.sqrt(C_sys[list(free).index(i)][list(free).index(i)])))[:12]
