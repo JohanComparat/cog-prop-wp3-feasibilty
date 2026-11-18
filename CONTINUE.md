@@ -17,7 +17,10 @@
 - G: `scripts/94_summary.py` (results/wp3_feasibility_summary.json); `collect_wp3feas()` is still to be written in erc-cog-prop; N6 has no output in ggah_sens_study v1.7.0.
 - F partial: a five-shell gradient takes about 360 s with the blocks in sequence, so a NUTS chain needs about 5 700 GPU hours: the gradient cost is the WP3 compute risk.
 
+- erc-cog-prop: `collect_wp3feas()` and `--wp3-only` in `scripts/make_proposal_figures.py`; 32 `wpThree*` macros in `shared/numbers.tex`; the B2 draft uses them (Table 3 outlier row 5.5e-3, eps_max_own as the other rows). All uncommitted there; `build.sh check` fails on B2 length (9 content pages, limit 8).
+
 **Next.**
+- Cut B2 back to 8 pages (the user decides what goes).
 - Resubmit the five-shell timing job when it reaches 24 h (it resumes); rerun 94 after it and after 64275977.
 - Write `collect_wp3feas()` and the `wpThree*` macros; replace the \tbd numbers of B2 by them.
 - F timing jobs 64253821, 64253822 (running 3 h+); E rerun 64275977.
