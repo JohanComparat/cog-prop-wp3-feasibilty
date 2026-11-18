@@ -20,6 +20,15 @@ for the full vector and for:
 4. ``sim_cov``: :math:`W` exact, but the 68 × 68 covariance of :math:`t` estimated from
    :math:`n_s` Gaussian realisations, with the Hartlap factor; median and 16th–84th percentiles of
    :math:`\sigma(S_8)` over ``--trials`` draws, for each :math:`n_s` (the route of script 31).
+
+With ``--shells`` (at CC, where ``shells_2031/S5_public_2031/jacobian.npz`` exists: 381 003 rows,
+212 parameters) the same test runs on the five-shell run, through the ``Run`` class and the
+block structure of ``ggah_sens_study`` ``scripts/77_shells_covariance.py``: C1 has no covariance
+between bands, so each band block is factorised alone and the densities are compressed with the
+spectra; the case ``jac_today`` has no five-shell counterpart and is left out.
+The full-vector Fisher matrix is checked against ``shells_fisher.npz`` (key ``T5|k|C1``).
+
+    python scripts/32_compression.py --shells --k-max 0.3 1 3 10     (cc/cpu.sbatch)
 """
 
 import argparse
@@ -43,7 +52,10 @@ def main(argv=None):
     ap.add_argument("--tier", default="T5")
     ap.add_argument("--ns", type=int, nargs="+", default=[100, 150, 250, 500, 1000, 3000])
     ap.add_argument("--trials", type=int, default=200)
+    ap.add_argument("--shells", action="store_true", help="the five-shell S5_public_2031 (at CC)")
     a = ap.parse_args(argv)
+    if a.shells:
+        return main_shells(a)
 
     from ggah_sens_study.basis import ad_sigma8_gradient
     from ggah_sens_study.fiducial import load_fiducial
@@ -142,6 +154,99 @@ def main(argv=None):
     rec.data.update(run=RUN.name, tier=a.tier, level="C1", trials=a.trials, results=out,
                     note="loss = sigma(S8)_compressed / sigma(S8)_full - 1; densities uncompressed")
     print(rec.write())
+
+
+def main_shells(a):
+    import importlib.util
+
+    from scipy.linalg import cholesky, solve_triangular
+
+    from ggah_sens_study.fiducial import load_fiducial
+    from ggah_sens_study.joint import analysis as AN
+    from ggah_sens_study.joint.survey import Noise
+
+    run_dir = SENS / "shells_2031" / "S5_public_2031"
+    import ggah_sens_study
+    s77 = Path(ggah_sens_study.__file__).resolve().parents[1] / "scripts" / "77_shells_covariance.py"
+    spec = importlib.util.spec_from_file_location("s77", s77)
+    m77 = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m77)
+    m77.shells_root = lambda: run_dir.parent
+    rec = Record(__file__)
+    for f in (run_dir / "jacobian.npz", run_dir / "info.npz", run_dir / "config.json",
+              run_dir / "shells_fisher.npz", s77):
+        rec.add_input(f)
+    fid = load_fiducial()
+    run = m77.Run("S5_public_2031", fid)
+    scheme = run.schemes[0]
+    ref = np.load(run_dir / "shells_fisher.npz", allow_pickle=True)
+    ref_keys = [str(k) for k in ref["keys"]]
+    rng = np.random.default_rng(32)
+
+    def s8rel(F):
+        return float(run.constraints(F, scheme)["S8_rel"])
+
+    out = {}
+    for k in a.k_max:
+        blocks, Jf, disc, rows = AN._cell_blocks(run.v0, run.J, run.info, run.cfg, Noise(),
+                                                 fid.cosmology, tier=a.tier, k_max=k, T=run.T,
+                                                 y_noise=run.y_noise)
+        p = Jf.shape[1]
+        Fx = np.zeros((p, p))   # J^T C^-1 J
+        G = np.zeros((p, p))    # diagonal weights: Jw^T Jw
+        S = np.zeros((p, p))    # Jw^T R Jw
+        nd = 0
+        for idx, blk in blocks:
+            d = np.sqrt(np.diag(blk))
+            R = blk / np.outer(d, d)
+            Jw = Jf[idx] / d[:, None]
+            try:
+                U = cholesky(R, lower=False, check_finite=False)
+                X = solve_triangular(U, Jw, trans="T", lower=False, check_finite=False)
+                Fx += X.T @ X
+            except np.linalg.LinAlgError:
+                w, V = np.linalg.eigh(R)
+                ok = w > AN.EIG_FLOOR * w.max()
+                nd += int((~ok).sum())
+                P = V[:, ok].T @ Jw
+                Fx += (P.T / w[ok]) @ P
+            G += Jw.T @ Jw
+            S += Jw.T @ R @ Jw
+        base = s8rel(Fx)
+        key = f"{a.tier}|{k:g}|C1"
+        check = None
+        if key in ref_keys and ref["F"].shape[1] == p:
+            Fr = ref["F"][ref_keys.index(key)]
+            check = {"S8_rel_shells_fisher": s8rel(Fr),
+                     "max_rel_diag": float(np.max(np.abs(np.diag(Fx) - np.diag(Fr))
+                                                  / np.maximum(np.abs(np.diag(Fr)), 1e-300)))}
+        cases = {"exact": base, "diag_cov": s8rel(G @ np.linalg.solve(S, G))}
+        Lt = np.linalg.cholesky(Fx + 1e-12 * np.trace(Fx) / p * np.eye(p))
+        sims = {}
+        for ns in a.ns:
+            if ns <= p + 3:
+                continue
+            vals = []
+            for _ in range(a.trials):
+                x = rng.standard_normal((ns, p)) @ Lt.T
+                Sh = np.cov(x, rowvar=False)
+                h = (ns - p - 2.0) / (ns - 1.0)
+                vals.append(s8rel(Fx @ (h * np.linalg.solve(Sh, Fx))))
+            q = np.percentile(vals, [16, 50, 84]) / base
+            sims[str(ns)] = {"ratio_p16": q[0], "ratio_median": q[1], "ratio_p84": q[2]}
+            print(f"k_max {k:g} n_s {ns:5d}: sigma(S8) / full = {q[1]:.3f} [{q[0]:.3f}, {q[2]:.3f}]",
+                  flush=True)
+        loss = {c: v / base - 1.0 for c, v in cases.items()}
+        out[f"{k:g}"] = {"rows": int(Jf.shape[0]), "n_dropped": nd, "n_params": p,
+                         "S8_rel_full": base, "S8_rel": cases, "loss": loss, "sim_cov": sims,
+                         "check": check}
+        print(f"k_max {k:g}: {Jf.shape[0]} rows -> {p}; S8_rel full {base:.4e}; "
+              + ", ".join(f"{c} {v:+.2%}" for c, v in loss.items()) + f"; check {check}", flush=True)
+    rec.data.update(run="S5_public_2031", tier=a.tier, level="C1", scheme=scheme,
+                    trials=a.trials, results=out,
+                    note="loss = sigma(S8)_compressed / sigma(S8)_full - 1; densities compressed "
+                         "with the spectra; n_s <= p + 3 skipped")
+    print(rec.write("32_compression_S5_public_2031"))
 
 
 if __name__ == "__main__":
