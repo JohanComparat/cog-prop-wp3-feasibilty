@@ -10,7 +10,12 @@
 
 - The sens-study outputs are read from v1.7.0 from now on (`wp3feas/provenance.py`); 01 and 11 rerun on it.
 
+- CC results fetched: B split (64253845), C (64253842–4) on v1.7.0; E five-shell (64253850) had read v1.6.0 (the old default deployed), resubmitted on v1.7.0 as 64275977.
+- C at k_max 3: f_out tolerance 6.0e-4 (spread over all shells), 1.3e-2 (neighbouring shells); a free f_out costs 0.6–1.9 per cent on σ(S8). B: galaxies and shear each carry about 0.8 of the S8 information, X-ray 0.14.
+- E five-shell (v1.6.0): 1 000 simulations of the compressed vector cost 3.5–4.5 per cent on σ(S8), more than the one-shell 1.1–1.3.
+
 **Next.**
+- F timing jobs 64253821, 64253822 (running 3 h+); E rerun 64275977.
 - Collect A, B, C, E, F results; G (`wp3_feasibility_summary.json`), then P in erc-cog-prop.
 
 ## 2026-11-16 (evening) — S(k) band of the fit at `_v1final` it 18
