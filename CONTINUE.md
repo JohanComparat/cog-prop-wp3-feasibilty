@@ -6,7 +6,7 @@
 - `scripts/91_sk_band.py points`: S(k) at hybrid points (defaults with one parameter group at its fitted value, galaxy parameters at the defaults; `results/91_sk_points_s0_cuts_it21.json`).
 - `scripts/93_combined_point.py`: today's fit conditional on the galaxy defaults times the ggah_cal gas fit, a candidate for the non-galaxy defaults (`results/93_combined_point_s0_cuts_it21.json`).
 - Strategy in PLAN.md: Part D frozen at `_cuts` it 21 for the proposal; D3 and the fit with SMF and gas relations as data terms moved to Paper II.
-- Started in parallel: A (01), B (11), C (12) on the laptop; E light-cones and compression (31, 32); F timing (41) submitted at CC gpu.
+- Started in parallel: A (01), B (11), C (12), E light-cones and compression (31, 32) and F timing (41), all run at CC (the laptop is kept free).
 
 **Next.**
 - Collect A, B, C, E, F results; G (`wp3_feasibility_summary.json`), then P in erc-cog-prop.

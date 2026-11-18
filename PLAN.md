@@ -29,7 +29,7 @@
 Part D answers question 5 well enough for the proposal: about 70 per cent of the public vector is measured and fits at χ²/n 1.13 after the scale cuts.
 It is frozen at `_cuts` it 21; D3 and the fit with the SMF and gas relations as data terms move to Paper II, and their tension enters risk R3.
 The remaining effort goes to the referee questions, in this order, with A–C, E (31–32) and F run in parallel:
-1. A then B and C (forecast side, Limber and existing Jacobians, laptop): questions 1 and 2, Table 3.
+1. A then B and C (forecast side, Limber and existing Jacobians, at CC): questions 1 and 2, Table 3.
 2. F (CC gpu): question 4 and the compute line of `resources.tex`.
 3. E for the proposal scope: light-cone count and compression (31–32), with the shear × shear jackknife and the cross-survey B-mode failure as the risk and its mitigation: question 3.
 4. G, then P (Gate W3), then N1, N6, N7 read in.
