@@ -24,6 +24,13 @@ The fraction of the Fisher information on S8 above k is :math:`1 - F(k)/F(10)` w
 information per map needs the per-block Jacobians, at CC).
 
 Writes results/11_ellmax.json.
+
+``--split`` (at CC, ``sbatch cc/cpu.sbatch scripts/11_ellmax.py --split``; needs the per-block
+Jacobian ``jacobian.npz`` and ``ssc.npz`` of the run) splits the information by map family:
+for each family (gal, agn, ks, y, x, x_arch) the T5 Fisher matrix (C1+SSC, E1, the headline
+calibration) is recomputed without the pairs that involve it (``analysis.tier_pairs`` patched),
+at k_max = 1, 3, 10 h/Mpc, and the family's share is :math:`1 - F_{\rm without}/F_{\rm all}`
+on S8.  Writes results/11_ellmax_split.json.
 """
 
 import json
@@ -31,8 +38,6 @@ import sys
 from pathlib import Path
 
 import numpy as np
-import pyccl as ccl
-from scipy.optimize import brentq
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from wp3feas.provenance import SENS, Record  # noqa: E402
@@ -70,6 +75,8 @@ def crossing(ell, signal, noise):
 
 
 def main():
+    import pyccl as ccl
+    from scipy.optimize import brentq
     from ggah_sens_study.tier4.kernels import act_beam, king_beam
 
     rec = Record(__file__)
@@ -156,5 +163,63 @@ def main():
     print(rec.write())
 
 
+def split():
+    """Leave-one-family-out S8 information of S5_public_2031 at CC."""
+    import importlib.util
+
+    import ggah_sens_study
+    from ggah_sens_study.fiducial import load_fiducial
+    from ggah_sens_study.joint import analysis as AN
+    from ggah_sens_study.joint.survey import Noise
+
+    rec = Record(__file__)
+    root = Path(ggah_sens_study.__file__).resolve().parents[1]
+    spec = importlib.util.spec_from_file_location("s90", root / "scripts" / "90_shells_2031.py")
+    S90 = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(S90)
+    S90._setup()
+    S77 = S90.S77
+    S77.CALIBS = {S90.CALIB_MAIN: dict(S90.S78.CALIBS)[S90.CALIB_MAIN]}
+    fid = load_fiducial()
+    name = "S5_public_2031"
+    run = S90.S78.Run(name, fid, drop=S90.dropped(name, S90._info(name)["discrete"]))
+    rec.add_input(run.src_dir)
+    wid = run.widths(calib=S90.CALIB_MAIN)
+    ssc = run.ssc()
+    orig = AN.tier_pairs
+    xarch = {n for n, b in json.loads(str(run.info["x_maps"])).items() if b.get("family") == "x_arch"} \
+        if "x_maps" in run.info else set()
+
+    def fam(t):
+        k = AN._kind(t)
+        return "x_arch" if k == "x" and str(t).split("@")[0] in xarch else k
+
+    def sigma(k, drop=None):
+        AN.tier_pairs = (orig if drop is None else
+                         (lambda pairs, tier: [p for p in orig(pairs, tier) if drop not in map(fam, p)]))
+        try:
+            F, st = AN.cell_fisher(run.v0, run.J, run.info, run.cfg, Noise(), fid.cosmology, tier="T5",
+                                   k_max=k, ssc=ssc, area_scales=(1.0,), T=run.T, y_noise=run.y_noise)
+        finally:
+            AN.tier_pairs = orig
+        r = run.constraints(F["C1+SSC"][0], "E1", widths=wid)
+        return float(r["S8_rel"]), int(st["rows"])
+
+    out = []
+    for k in (1.0, 3.0, 10.0):
+        s_all, n_all = sigma(k)
+        cell = {"k_max": k, "S8_rel": s_all, "rows": n_all, "without": {}}
+        for f in ("gal", "agn", "ks", "y", "x", "x_arch"):
+            s_, n_ = sigma(k, f)
+            cell["without"][f] = {"S8_rel": s_, "rows": n_, "share": 1 - (s_all / s_) ** 2}
+            print(f"k_max {k:g}: all {s_all:.3e} ({n_all} rows); without {f}: {s_:.3e} ({n_} rows), "
+                  f"share {cell['without'][f]['share']:.3f}", flush=True)
+        out.append(cell)
+    rec.data.update(run=name, run_dir=str(run.src_dir), level="C1+SSC", scheme="E1", tier="T5",
+                    calib=str(S90.CALIB_MAIN), cells=out,
+                    convention="share = 1 - F_without/F_all on S8 (leave one family out)")
+    print(rec.write("11_ellmax_split"))
+
+
 if __name__ == "__main__":
-    main()
+    split() if "--split" in sys.argv else main()
