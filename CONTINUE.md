@@ -14,7 +14,12 @@
 - C at k_max 3, C1+SSC, E2: f_out tolerance 2.4e-3 (spread over all shells), 6.2e-3 (neighbouring shells); a free f_out costs 0.03–0.16 per cent on σ(S8). B2 WP3, Table 3 and R3–R4 drafted in erc-cog-prop (uncommitted). B: galaxies and shear each carry about 0.8 of the S8 information, X-ray 0.14.
 - E five-shell (v1.6.0): 1 000 simulations of the compressed vector cost 3.5–4.5 per cent on σ(S8), more than the one-shell 1.1–1.3.
 
+- G: `scripts/94_summary.py` (results/wp3_feasibility_summary.json); `collect_wp3feas()` is still to be written in erc-cog-prop; N6 has no output in ggah_sens_study v1.7.0.
+- F partial: a five-shell gradient takes about 360 s with the blocks in sequence, so a NUTS chain needs about 5 700 GPU hours: the gradient cost is the WP3 compute risk.
+
 **Next.**
+- Resubmit the five-shell timing job when it reaches 24 h (it resumes); rerun 94 after it and after 64275977.
+- Write `collect_wp3feas()` and the `wpThree*` macros; replace the \tbd numbers of B2 by them.
 - F timing jobs 64253821, 64253822 (running 3 h+); E rerun 64275977.
 - Collect A, B, C, E, F results; G (`wp3_feasibility_summary.json`), then P in erc-cog-prop.
 
