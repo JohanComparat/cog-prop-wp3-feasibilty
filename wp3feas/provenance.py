@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 RESULTS = ROOT / "results"
 DATA = Path(os.environ.get("WP3FEAS_DATA", Path.home() / "data" / "cog-prop-wp3-feasibility"))
 # The forecast runs of ggah_sens_study that this study reads and never writes.
-SENS = Path(os.environ.get("WP3FEAS_SENS", Path.home() / "data" / "ggah_sens_study_results_v1.6.0"))
+SENS = Path(os.environ.get("WP3FEAS_SENS", Path.home() / "data" / "ggah_sens_study_results_v1.7.0"))
 
 
 def git_hash():

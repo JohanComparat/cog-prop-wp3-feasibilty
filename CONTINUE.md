@@ -8,6 +8,8 @@
 - Strategy in PLAN.md: Part D frozen at `_cuts` it 21 for the proposal; D3 and the fit with SMF and gas relations as data terms moved to Paper II.
 - Started in parallel: A (01), B (11), C (12), E light-cones and compression (31, 32) and F timing (41), all run at CC (the laptop is kept free).
 
+- The sens-study outputs are read from v1.7.0 from now on (`wp3feas/provenance.py`); 01 and 11 rerun on it.
+
 **Next.**
 - Collect A, B, C, E, F results; G (`wp3_feasibility_summary.json`), then P in erc-cog-prop.
 
