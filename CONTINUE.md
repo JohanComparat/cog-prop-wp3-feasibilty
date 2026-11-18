@@ -1,5 +1,16 @@
 # Where this stands, and what happens next
 
+## 2026-11-18 — Part D frozen; strategy to the proposal
+
+**Done.**
+- `scripts/91_sk_band.py points`: S(k) at hybrid points (defaults with one parameter group at its fitted value, galaxy parameters at the defaults; `results/91_sk_points_s0_cuts_it21.json`).
+- `scripts/93_combined_point.py`: today's fit conditional on the galaxy defaults times the ggah_cal gas fit, a candidate for the non-galaxy defaults (`results/93_combined_point_s0_cuts_it21.json`).
+- Strategy in PLAN.md: Part D frozen at `_cuts` it 21 for the proposal; D3 and the fit with SMF and gas relations as data terms moved to Paper II.
+- Started in parallel: A (01), B (11), C (12) on the laptop; E light-cones and compression (31, 32); F timing (41) submitted at CC gpu.
+
+**Next.**
+- Collect A, B, C, E, F results; G (`wp3_feasibility_summary.json`), then P in erc-cog-prop.
+
 ## 2026-11-16 (evening) — S(k) band of the fit at `_v1final` it 18
 
 **Done.**

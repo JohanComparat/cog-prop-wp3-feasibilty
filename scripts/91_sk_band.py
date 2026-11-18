@@ -189,17 +189,80 @@ def cmd_forecast(a):
     print(rec.write(f"91_sk_band_forecast_{a.draws}"))
 
 
+def cmd_points(a):
+    """S at hybrid points between the defaults and the iterate: the defaults with the fitted
+    values of one group of parameters (or a fraction ``f`` of their shift), the galaxy
+    parameters kept at their defaults so that the stellar-mass function does not change."""
+    import jax
+    import jax.numpy as jnp
+    from ggah_mod.spectra.pk import pk_cross
+    from ggah_sens_study.fiducial import load_fiducial
+    from ggah_sens_study.joint import model as M
+    from ggah_sens_study.joint.model import Z_GAS_SWITCH
+
+    rec = Record(__file__)
+    fid = load_fiducial()
+    cfg = public_config(**S22.LAYOUTS[a.layout])
+    J = M._Joint(fid, cfg, "closure")
+    names = list(M.names(cfg))
+    th0 = np.asarray(M.theta0(fid, cfg))
+    point = json.loads((it_dir(a) / "theta.json").read_text())
+    assert point["names"] == names
+    x = np.asarray(point["theta"])
+    opts = fid.pk_options
+    gal = set(M.GAL)
+    dpm = set(M._dpm_names())
+    groups = {
+        "eps_agn_p": {"log10_eps_agn_p"},
+        "agn_energy": {"log10_eps_agn_p", "eta_ej"},
+        "agn_energy_bh": {"log10_eps_agn_p", "eta_ej", "mu_bh", "al_bh", "sig_bh"},
+        "gas_profile": dpm,
+        "agn_energy_gas": dpm | {"log10_eps_agn_p", "eta_ej"},
+        "non_galaxy": {n for n in names if n not in gal},
+    }
+
+    def S(theta, z):
+        p = J.params_of(theta)
+        cosmo = J.cosmology_at(theta)
+        field = J.los_field(cosmo, z)
+        dp = p["dp"] if z <= Z_GAS_SWITCH else J.dp_far(p, cosmo)
+        wm, _ = J.matter_weights(field, cosmo, p, dp)
+        w0, _ = J.matter_weights(field, cosmo, p, dp, matter="dmo")
+        return (pk_cross(field, wm, wm, overlap="identical", options=opts).total
+                / pk_cross(field, w0, w0, overlap="identical", options=opts).total)
+
+    pts = {"default": th0, "fit": x}
+    for g, members in groups.items():
+        sel = np.array([n in members for n in names])
+        for f in a.fractions:
+            pts[f"{g}@{f:g}"] = np.where(sel, th0 + f * (x - th0), th0)
+    z = a.z[-1]
+    f = jax.jit(lambda t: S(t, z))
+    k = np.asarray(J.los_field(J.cosmology_at(jnp.asarray(x)), 0.0).k)
+    out = {}
+    for lbl, th in pts.items():
+        s_ = np.asarray(f(jnp.asarray(th)))
+        out[lbl] = {"S": s_.tolist(),
+                    "changed": [n for n, u, v in zip(names, th, th0) if u != v]}
+        print(f"{lbl:24s}", " ".join(f"{np.interp(np.log(kk), np.log(k), s_):.3f}" for kk in (0.3, 1, 3, 10)),
+              flush=True)
+    rec.data.update(it=a.it, layout=a.layout, map_tag=os.environ.get("WP3FEAS_MAP_TAG", ""), z=z,
+                    k=k.tolist(), groups={g: sorted(m) for g, m in groups.items()}, points=out)
+    print(rec.write(f"91_sk_points{tag_of(a)}"))
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=("cov", "jac", "band", "forecast"))
+    ap.add_argument("cmd", choices=("cov", "jac", "band", "forecast", "points"))
     ap.add_argument("--it", type=int, default=0)
     ap.add_argument("--at-default", action="store_true", help="jac: at the defaults, not at an iterate")
     ap.add_argument("--draws", default="forecast_S5_lsst_2030_k10", help="forecast: the case of script 92")
     ap.add_argument("--layout", default="_s0", choices=list(S22.LAYOUTS))
+    ap.add_argument("--fractions", type=float, nargs="+", default=[0.5, 1.0], help="points: fraction of the shift")
     ap.add_argument("--z", type=float, nargs="+", default=[0.0, 0.15])
     a = ap.parse_args(argv)
     S22.set_layout(a.layout)
-    {"cov": cmd_cov, "jac": cmd_jac, "band": cmd_band, "forecast": cmd_forecast}[a.cmd](a)
+    {"cov": cmd_cov, "jac": cmd_jac, "band": cmd_band, "forecast": cmd_forecast, "points": cmd_points}[a.cmd](a)
 
 
 if __name__ == "__main__":
