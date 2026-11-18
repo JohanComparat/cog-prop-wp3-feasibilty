@@ -1,0 +1,160 @@
+r"""Part B: the multipole to which each map contributes in each shell (Referee 1, pt 3).
+
+    ~/software/miniforge3/envs/dev-full/bin/python scripts/11_ellmax.py      (pyccl)
+
+For each shell of S5_public_2031, :math:`\ell_k = k\,\chi(z_{\rm eff})` at k = 1, 3, 10 h/Mpc
+(χ in Mpc/h), compared with the multipole at which each map loses its signal:
+
+* beams: :math:`B_\ell = 1/2` for the ACT DR6 y beam (``tier4.kernels.act_beam``), the eROSITA
+  King PSF (``king_beam``) and the Gaussian archive beam (FWHM from the run's ``x_maps``);
+* shot noise of each galaxy and AGN sample: :math:`b^2 C_\ell^{mm} = 1/\bar n`, with the
+  shell's top-hat n(z) (convolved with :math:`\sigma_z = 0.0305(1+z)` for the photometric
+  samples), halofit, and a nominal linear bias per sample (``BIAS``, a bracket: ×0.75 and ×1.25
+  are reported too);
+* shape noise of each source bin: :math:`C_\ell^{\kappa\kappa} = \sigma_e^2/n_{{\rm eff},i}`,
+  with n_eff split equally over the five bins;
+* the y map: the GNFW (Arnaud et al. 2010) halo-model :math:`C_\ell^{yy}` against the measured
+  ACT DR6 noise of the run (power law through N(1000), N(3000), floored at the white level
+  1.8e-18 sr) divided by :math:`B_\ell^2`.
+
+The X-ray maps carry only their PSF here: their photon-noise crossing needs the gas model's
+:math:`C_\ell`, which is not in the run's outputs.
+The fraction of the Fisher information on S8 above k is :math:`1 - F(k)/F(10)` with
+:math:`F = \sigma(S_8)^{-2}` of the run's T5, C1+SSC, E1 table (all maps together; the
+information per map needs the per-block Jacobians, at CC).
+
+Writes results/11_ellmax.json.
+"""
+
+import json
+import sys
+from pathlib import Path
+
+import numpy as np
+import pyccl as ccl
+from scipy.optimize import brentq
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from wp3feas.provenance import SENS, Record  # noqa: E402
+
+RUN = SENS / "shells_2031" / "S5_public_2031"
+KS = (1.0, 3.0, 10.0)
+SQDEG_PER_SR = (180.0 / np.pi) ** 2
+ARCMIN2_PER_SR = SQDEG_PER_SR * 3600.0
+SIGMA_E = 0.26                       # lsst_euclid_public_2031 (ggah_sens_study tier2/lensing.py)
+Y_WHITE = 1.8e-18                    # act_dr6_measured (joint/footprints.py MAP_NOISE)
+ELL = np.geomspace(10, 1e5, 400)
+
+
+def nominal_bias(name):
+    """Linear bias of a sample from its name: g{r,b}<log M*>[p]@shell or a<log L_X>@shell."""
+    tag = name.split("@")[0]
+    if tag.startswith("a"):
+        return 1.5
+    m = float(tag[2:].rstrip("p"))
+    red = tag[1] == "r"
+    base = 1.1 if m < 10 else 1.3 if m < 10.5 else 1.6 if m < 11 else 2.0 if m < 11.5 else 2.6
+    return base * (1.1 if red else 0.9)
+
+
+def crossing(ell, signal, noise):
+    """First ell at which signal falls below noise (None if never in range, ell[0] if always)."""
+    r = np.log(signal / noise)
+    if r[0] < 0:
+        return float(ell[0])
+    i = np.where(r < 0)[0]
+    if not len(i):
+        return None
+    j = i[0]
+    return float(np.exp(np.interp(0, [r[j], r[j - 1]], np.log([ell[j], ell[j - 1]]))))
+
+
+def main():
+    from ggah_sens_study.tier4.kernels import act_beam, king_beam
+
+    rec = Record(__file__)
+    for f in ("info.npz", "samples.json", "shells_table.json"):
+        rec.add_input(RUN / f)
+    info = np.load(RUN / "info.npz")
+    smp = json.loads((RUN / "samples.json").read_text())
+    tab = json.loads((RUN / "shells_table.json").read_text())
+    xm = json.loads(str(info["x_maps"]))
+    cosmo = ccl.Cosmology(Omega_c=0.31 - 0.049, Omega_b=0.049, h=0.677, sigma8=0.8028, n_s=0.965,
+                                     matter_power_spectrum="halofit")
+    h = cosmo["h"]
+
+    beams = {"y (ACT DR6)": brentq(lambda l: act_beam([l])[0] - 0.5, 10, 1e5),
+             "X-ray eROSITA (King)": brentq(lambda l: king_beam([l])[0] - 0.5, 10, 1e6)}
+    for n, b in xm.items():
+        if b["beam"] == "gauss":
+            sig = b["beam_fwhm_arcmin"] / 60 * np.pi / 180 / np.sqrt(8 * np.log(2))
+            beams[f"X-ray archive {n}"] = float(np.sqrt(2 * np.log(2)) / sig)
+
+    # y: GNFW halo model
+    mdef = ccl.halos.MassDef200c
+    hmf = ccl.halos.MassFuncTinker08(mass_def=mdef)
+    hbf = ccl.halos.HaloBiasTinker10(mass_def=mdef)
+    hmc = ccl.halos.HMCalculator(mass_function=hmf, halo_bias=hbf, mass_def=mdef)
+    prof = ccl.halos.HaloProfilePressureGNFW(mass_def=mdef)
+    tsz = ccl.tSZTracer(cosmo, z_max=3.0)
+    pk_yy = ccl.halos.halomod_Pk2D(cosmo, hmc, prof, lk_arr=np.log(np.geomspace(1e-4, 1e2, 256)),
+                                   a_arr=np.linspace(0.25, 1, 32))
+    cl_yy = ccl.angular_cl(cosmo, tsz, tsz, ELL, p_of_k_a=pk_yy)
+    n1, n3 = smp["y"]["N_1000"], smp["y"]["N_3000"]
+    slope = np.log(n3 / n1) / np.log(3.0)
+    n_y = np.maximum(n1 * (ELL / 1000.0) ** slope, Y_WHITE) / np.asarray(act_beam(ELL)) ** 2
+    ell_y = crossing(ELL, cl_yy, n_y)
+
+    # shear: shape noise per source bin
+    src = []
+    n_eff_bin = smp["sources"]["n_eff"] / info["n_src_bins"]
+    for i, nz in enumerate(info["src_nz"]):
+        t = ccl.WeakLensingTracer(cosmo, dndz=(info["src_z"], nz))
+        cl = ccl.angular_cl(cosmo, t, t, ELL)
+        src.append({"bin": str(info["src_names"][i]),
+                    "ell_noise": crossing(ELL, cl, np.full_like(ELL, SIGMA_E ** 2 / (n_eff_bin * ARCMIN2_PER_SR)))})
+
+    shells = []
+    for s, (zlo, zhi) in enumerate(info["shells"]):
+        chi = float(info["chi_eff_shells"][s])
+        zg = np.linspace(max(zlo - 0.15, 0.005), zhi + 0.15, 400)
+        tophat = ((zg >= zlo) & (zg < zhi)).astype(float)
+        sz = 0.0305 * (1 + 0.5 * (zlo + zhi))
+        photo = np.convolve(tophat, np.exp(-0.5 * ((zg - zg.mean()) / sz) ** 2), mode="same")
+        samples = []
+        for name, t in smp["tracers"].items():
+            if int(name.split("@")[1]) != s or t["dropped"]:
+                continue
+            nz = photo if t["photometric"] else tophat
+            tr = ccl.NumberCountsTracer(cosmo, has_rsd=False, dndz=(zg, nz), bias=(zg, np.ones_like(zg)))
+            cl_mm = ccl.angular_cl(cosmo, tr, tr, ELL)
+            noise = np.full_like(ELL, 1.0 / (t["deg2"] * SQDEG_PER_SR))
+            b = nominal_bias(name)
+            samples.append({"name": name, "bias": b, "deg2": t["deg2"],
+                            "ell_noise": {f: crossing(ELL, (f * b) ** 2 * cl_mm, noise) for f in (0.75, 1.0, 1.25)}})
+        ell_k = {str(k): k * chi for k in KS}
+        shells.append({"z": [float(zlo), float(zhi)], "chi_eff_Mpc_h": chi, "ell_k": ell_k, "samples": samples})
+        print(f"shell {zlo:.1f}-{zhi:.1f}: chi {chi:.0f} Mpc/h, ell_k " +
+              " ".join(f"{v:.0f}" for v in ell_k.values()))
+        for sm in samples:
+            print(f"   {sm['name']:10s} b {sm['bias']:.2f}  ell(S/N=1) {sm['ell_noise'][1.0]}")
+
+    t5 = sorted((r["k_max"], r["S8_rel"]) for r in tab["table"]
+                if r["tier"] == "T5" and r["level"] == "C1+SSC" and r["scheme"] == "E1")
+    f_top = t5[-1][1] ** -2
+    info_above = [{"k_max": k, "S8_rel": s, "frac_info_above": 1 - s ** -2 / f_top} for k, s in t5]
+
+    rec.data.update(ks_h_Mpc=list(KS), beams_ell_half=beams, y={"ell_noise": ell_y, "noise_slope": float(slope)},
+                    shear={"sigma_e": SIGMA_E, "n_eff_per_bin_arcmin2": float(n_eff_bin), "bins": src},
+                    shells=shells, fisher_S8_T5_C1SSC_E1=info_above,
+                    caveats=["galaxy biases nominal (bracket x0.75, x1.25)",
+                             "X-ray photon-noise crossing not computed (needs the gas-model C_ell)",
+                             "information above k_max for all maps together, not per map"])
+    print("beams (B=1/2):", {k: round(v) for k, v in beams.items()})
+    print("y noise crossing:", ell_y, " shear:", [b["ell_noise"] for b in src])
+    print("fraction of S8 info above k:", [(d["k_max"], round(d["frac_info_above"], 3)) for d in info_above])
+    print(rec.write())
+
+
+if __name__ == "__main__":
+    main()
