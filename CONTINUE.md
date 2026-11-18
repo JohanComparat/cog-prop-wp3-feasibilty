@@ -20,7 +20,8 @@
 - erc-cog-prop: `collect_wp3feas()` and `--wp3-only` in `scripts/make_proposal_figures.py`; 32 `wpThree*` macros in `shared/numbers.tex`; the B2 draft uses them (Table 3 outlier row 5.5e-3, eps_max_own as the other rows). All uncommitted there; `build.sh check` fails on B2 length (9 content pages, limit 8).
 
 **Next.**
-- Cut B2 back to 8 pages (the user decides what goes).
+- B2 length: the user cuts later.
+- E rerun: 64275977 failed (v1.7.0 root at CC is /sps/lsst/users/jcomparat01/ggah/results/..., pass WP3FEAS_SENS); resubmitted as 64307020.
 - Resubmit the five-shell timing job when it reaches 24 h (it resumes); rerun 94 after it and after 64275977.
 - Write `collect_wp3feas()` and the `wpThree*` macros; replace the \tbd numbers of B2 by them.
 - F timing jobs 64253821, 64253822 (running 3 h+); E rerun 64275977.
