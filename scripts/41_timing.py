@@ -5,6 +5,7 @@
     python scripts/41_timing.py blocks --layout S5_public_2031   # the five-shell reference run
     python scripts/41_timing.py nuts                             # Gaussian targets, any machine
     python scripts/41_timing.py summary
+    python scripts/41_timing.py ckpt --layout _s0 --out-tag _v100   # checkpointed line of sight
 
 ``blocks`` builds the model (``joint.model.build``, split into ``info["blocks"]`` as in
 script 22) and, per block, times the value ``f(theta)`` and the gradient of a scalar of it
@@ -29,6 +30,17 @@ sequential times, for each ``--group-sizes``; (b) the largest group split over 2
 more than one device; (c) the compile time of the smallest group in a fresh process that reads
 the persistent compilation cache filled by this one (``--cache-dir``).
 It writes ``results/41_timing_fused<layout>.json`` after each stage and resumes from it.
+
+``ckpt`` measures the two routes for the line-of-sight blocks whose gradient does not fit a
+V100: ``plain`` (as ``blocks``) and ``remat`` (``build(..., remat_los=True)``: a
+``jax.checkpoint`` per line-of-sight node, so reverse mode keeps the spectra of each node and
+recomputes the rest node by node).  The blocks are, by default, the first line-of-sight block
+whose gradient failed in ``results/41_timing_blocks<layout>.json`` and the largest one whose
+gradient ran (to compare times with plain); ``--ckpt-blocks`` names them.  Each (block,
+variant) runs in a fresh process (``ckpt-one``), which reports the compile and steady time of
+the reverse-mode gradient, the peak device memory (``memory_stats``) and the gradient itself;
+the parent compares the remat and plain gradients where both ran.  It writes
+``results/41_timing_ckpt<layout><--out-tag>.json`` after each measurement and resumes from it.
 
 ``summary`` combines them into ``results/41_timing.json``: the wall time of a chain of
 ``--ess`` effective samples per parameter at 212 parameters = gradient evaluations per
@@ -426,9 +438,117 @@ def cmd_summary(a):
     print(rec.write("41_timing"))
 
 
+def _ckpt_blocks(layout, names):
+    """The blocks of ``ckpt``: ``names``, or the first line-of-sight block whose gradient failed
+    in the ``blocks`` timings and the largest one whose gradient ran."""
+    if names:
+        return list(names)
+    st = json.loads(_state_path(layout).read_text())["blocks"]
+    los = [k for k in st if k.startswith("los")]
+    failed = [k for k in los if "grad_s" not in st[k]]
+    ran = sorted((k for k in los if "grad_s" in st[k]), key=lambda k: (-st[k]["rows"], -st[k]["grad_s"]))
+    return failed[:1] + ran[:1]
+
+
+def _peak_bytes():
+    import jax
+    try:
+        m = jax.devices()[0].memory_stats() or {}
+    except Exception:  # noqa: BLE001  (CPU device)
+        m = {}
+    return {k: m.get(k) for k in ("peak_bytes_in_use", "bytes_limit")}
+
+
+def cmd_ckpt_one(a):
+    """Child of ``ckpt``: one block, one variant, in a fresh process; prints one JSON line."""
+    import jax
+    import jax.numpy as jnp
+    from ggah_sens_study.joint import model as M
+
+    r = {"block": a.block, "variant": a.variant, "device": str(jax.devices()[0])}
+    cfg, fid = _config(a.layout)
+    t = time.perf_counter()
+    _, info = M.build(fid, cfg, matter="closure", jit=False, block_pairs=a.block_pairs,
+                      block_pairs_los=a.block_pairs_los, remat_los=a.variant == "remat")
+    th = jnp.asarray(np.asarray(M.theta0(fid, cfg)))
+    r["build_s"] = time.perf_counter() - t
+    b = next(b for b in info["blocks"] if b["name"] == a.block)
+    r["rows"] = int(np.size(b["rows"]))
+    f = jax.jit(b["f"])
+    t = time.perf_counter()
+    y = jax.block_until_ready(f(th))
+    r["value_compile_s"] = time.perf_counter() - t
+    r["value_s"] = _median_time(f, th)
+    r["after_value"] = _peak_bytes()
+    c = jnp.asarray(np.random.default_rng(0).standard_normal(np.shape(y)))
+    g = jax.jit(jax.grad(lambda x: jnp.sum(c * b["f"](x))))
+    try:
+        t = time.perf_counter()
+        gv = jax.block_until_ready(g(th))
+        r["grad_compile_s"] = time.perf_counter() - t
+        r["grad_s"] = _median_time(g, th)
+        r["grad"] = np.asarray(gv).tolist()
+        r["value_norm"] = float(jnp.linalg.norm(y))
+    except Exception as e:  # noqa: BLE001  (out of memory)
+        r["grad_error"] = f"{type(e).__name__}: {str(e)[:300]}"
+    r["peak"] = _peak_bytes()
+    print(json.dumps(r), flush=True)
+
+
+def cmd_ckpt(a):
+    import subprocess
+
+    t_start = time.time()
+    out_path = RESULTS / f"41_timing_ckpt{a.layout}{a.out_tag}.json"
+    st = json.loads(out_path.read_text()) if out_path.is_file() else {"layout": a.layout, "runs": {}}
+    st.setdefault("blocks", _ckpt_blocks(a.layout, a.ckpt_blocks))
+    st["variants"] = a.variants
+
+    def save():
+        out_path.write_text(json.dumps(st, indent=1) + "\n")
+
+    save()
+    for bn in st["blocks"]:
+        for v in a.variants:
+            key = f"{bn}|{v}"
+            if key in st["runs"]:
+                continue
+            cmd = [sys.executable, "-u", str(Path(__file__).resolve()), "ckpt-one", "--layout", a.layout,
+                   "--block", bn, "--variant", v, "--block-pairs", str(a.block_pairs),
+                   "--block-pairs-los", str(a.block_pairs_los)]
+            t = time.perf_counter()
+            p = subprocess.run(cmd, capture_output=True, text=True)
+            lines = [ln for ln in p.stdout.splitlines() if ln.startswith("{")]
+            r = json.loads(lines[-1]) if lines else {"error": f"exit {p.returncode}: {p.stderr[-600:]}"}
+            r["wall_s"] = time.perf_counter() - t
+            st["runs"][key] = r
+            print(f"  {key}:", json.dumps({k: x for k, x in r.items() if k != "grad"}), flush=True)
+            save()
+    # remat against plain, where both gradients ran
+    cmp = {}
+    for bn in st["blocks"]:
+        pl, rm = st["runs"].get(f"{bn}|plain", {}), st["runs"].get(f"{bn}|remat", {})
+        c = {}
+        if "grad" in pl and "grad" in rm:
+            gp, gr = np.asarray(pl["grad"]), np.asarray(rm["grad"])
+            c["grad_max_rel_diff"] = float(np.max(np.abs(gr - gp)) / np.max(np.abs(gp)))
+            c["grad_time_ratio"] = rm["grad_s"] / pl["grad_s"]
+            c["compile_time_ratio"] = rm["grad_compile_s"] / pl["grad_compile_s"]
+        for v, r in (("plain", pl), ("remat", rm)):
+            pk = (r.get("peak") or {}).get("peak_bytes_in_use")
+            if pk:
+                c[f"peak_gb_{v}"] = pk / 1e9
+            c[f"grad_ok_{v}"] = "grad" in r
+        cmp[bn] = c
+    st["comparison"] = cmp
+    save()
+    print("  comparison:", json.dumps(cmp), flush=True)
+    print(f"done in {time.time() - t_start:.1f} s")
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=("blocks", "nuts", "summary", "fused", "cache-probe"))
+    ap.add_argument("cmd", choices=("blocks", "nuts", "summary", "fused", "cache-probe", "ckpt", "ckpt-one"))
     ap.add_argument("--layout", default="_s0")
     ap.add_argument("--max-blocks", type=int, default=0)
     ap.add_argument("--block-pairs", type=int, default=40)
@@ -438,9 +558,15 @@ def main(argv=None):
     ap.add_argument("--ess", type=int, default=1000)
     ap.add_argument("--group-sizes", type=int, nargs="+", default=[4, 8], help="fused: blocks per program")
     ap.add_argument("--cache-dir", type=Path, default=DATA / "jax_cache_41", help="fused: persistent compilation cache")
+    ap.add_argument("--ckpt-blocks", nargs="+", default=None, help="ckpt: block names (default: see the docstring)")
+    ap.add_argument("--variants", nargs="+", default=["remat", "plain"], choices=("plain", "remat"),
+                    help="ckpt: the routes, in this order")
+    ap.add_argument("--out-tag", default="", help="ckpt: suffix of the output JSON (e.g. _v100, _h100)")
+    ap.add_argument("--block", default=None, help="ckpt-one: the block")
+    ap.add_argument("--variant", default="plain", choices=("plain", "remat"), help="ckpt-one: the route")
     a = ap.parse_args(argv)
     {"blocks": cmd_blocks, "nuts": cmd_nuts, "summary": cmd_summary, "fused": cmd_fused,
-     "cache-probe": cmd_cache_probe}[a.cmd](a)
+     "cache-probe": cmd_cache_probe, "ckpt": cmd_ckpt, "ckpt-one": cmd_ckpt_one}[a.cmd](a)
 
 
 if __name__ == "__main__":
