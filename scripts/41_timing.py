@@ -42,6 +42,20 @@ the reverse-mode gradient, the peak device memory (``memory_stats``) and the gra
 the parent compares the remat and plain gradients where both ran.  It writes
 ``results/41_timing_ckpt<layout><--out-tag>.json`` after each measurement and resumes from it.
 
+``mgpu`` repeats the multi-GPU part of ``fused`` with a dispatch that can overlap.  In ``fused``
+the model was built once on the first device and every device's program closed over its
+arrays, so each call moved them to the other devices and the calls ran one after another
+(2 and 4 V100s: 0.82 and 1.07 times one).  Here each device gets its own build under
+``jax.default_device`` (every constant lives on that device), its share of the subset of
+``fused`` (``blocks[i::D]``, one jitted reverse-mode gradient per block, as in the MAP chains),
+and its own Python thread; the threads compile together, then run together, each timing its
+own busy interval.  The same programs are also run one device at a time, so the speed-up
+compares identical work: (sum of the per-device times run alone) / (wall time run together).
+Each ``D`` runs in a fresh process (``mgpu-one``), and a second fresh process for the largest
+``D`` reads the persistent compilation cache filled by the first (the cache test of ``fused``
+ran out of memory because its child shared the device with the parent).
+It writes ``results/41_timing_mgpu<layout><--out-tag>.json`` after each process.
+
 ``summary`` combines them into ``results/41_timing.json``: the wall time of a chain of
 ``--ess`` effective samples per parameter at 212 parameters = gradient evaluations per
 effective sample x ESS x the steady gradient time of the five-shell model.
@@ -546,9 +560,154 @@ def cmd_ckpt(a):
     print(f"done in {time.time() - t_start:.1f} s")
 
 
+def cmd_mgpu_one(a):
+    """Child of ``mgpu``: ``--ndev`` devices, one build, thread and set of block programs each;
+    prints one JSON line."""
+    import concurrent.futures as cf
+
+    import jax
+    import jax.numpy as jnp
+    from ggah_sens_study.joint import model as M
+
+    _enable_cache(a.cache_dir)
+    devs = jax.devices()[:a.ndev]
+    D = len(devs)
+    fz = json.loads((RESULTS / f"41_timing_fused{a.layout}.json").read_text())
+    names = fz["selected"]
+    parts = [names[i::D] for i in range(D)]
+    cfg, fid = _config(a.layout)
+    r = {"ndev": D, "devices": [str(d) for d in devs], "parts": parts,
+         "env": {k: os.environ.get(k) for k in ("XLA_FLAGS", "XLA_PYTHON_CLIENT_PREALLOCATE",
+                                                 "XLA_PYTHON_CLIENT_MEM_FRACTION", "XLA_PYTHON_CLIENT_ALLOCATOR")}}
+
+    def setup(i):
+        """Build on device i and compile the gradients of its blocks; returns (fns, theta, times)."""
+        d = devs[i]
+        with jax.default_device(d):
+            t0 = time.perf_counter()
+            _, info = M.build(fid, cfg, matter="closure", jit=False, block_pairs=a.block_pairs,
+                              block_pairs_los=a.block_pairs_los)
+            th = jax.device_put(jnp.asarray(np.asarray(M.theta0(fid, cfg))), d)
+            tb = time.perf_counter() - t0
+            by = {b["name"]: b for b in info["blocks"]}
+            fns, comp = [], {}
+            for k, bn in enumerate(parts[i]):
+                b = by[bn]
+                shape = jax.eval_shape(b["f"], th).shape
+                c = jax.device_put(jnp.asarray(np.random.default_rng(k).standard_normal(shape)), d)
+                g = jax.jit(jax.grad(lambda x, f=b["f"], c=c: jnp.sum(c * f(x))))
+                t = time.perf_counter()
+                jax.block_until_ready(g(th))
+                comp[bn] = time.perf_counter() - t
+                fns.append(g)
+        return fns, th, {"build_s": tb, "first_call_s": comp}
+
+    def run(i, fns, th):
+        """One pass over device i's blocks; returns (start, end) on the shared clock."""
+        t = time.perf_counter()
+        out = [g(th) for g in fns]  # dispatched without waiting, then awaited together
+        jax.block_until_ready(out)
+        return t, time.perf_counter()
+
+    t = time.perf_counter()
+    with cf.ThreadPoolExecutor(D) as ex:
+        built = list(ex.map(setup, range(D)))
+    r["setup_wall_s"] = time.perf_counter() - t
+    r["per_device"] = [b[2] for b in built]
+    for i in range(D):  # warm call, also the memory check
+        run(i, built[i][0], built[i][1])
+    # alone: each device in turn, nothing else running
+    alone = []
+    for i in range(D):
+        ts = [run(i, built[i][0], built[i][1]) for _ in range(3)]
+        alone.append(float(np.median([e - s for s, e in ts])))
+    r["alone_s"] = alone
+    # together: all threads started at once
+    walls, busy = [], []
+    for _ in range(3):
+        t0 = time.perf_counter()
+        with cf.ThreadPoolExecutor(D) as ex:
+            se = list(ex.map(lambda i: run(i, built[i][0], built[i][1]), range(D)))
+        walls.append(time.perf_counter() - t0)
+        busy.append([(s - t0, e - t0) for s, e in se])
+    k = int(np.argsort(walls)[len(walls) // 2])
+    r["together_wall_s"] = walls[k]
+    r["together_intervals_s"] = busy[k]
+    r["speedup_same_work"] = float(sum(alone) / walls[k])
+    r["ideal_speedup"] = float(sum(alone) / max(alone))
+    f8 = fz.get("fused", {}).get(str(len(names)), {})
+    seq = fz.get("sequential", {})
+    if len(seq) == len(names):
+        r["sequential_blocks_grad_s"] = float(sum(v["grad_s"] for v in seq.values()))
+        r["speedup_vs_sequential_one_device"] = r["sequential_blocks_grad_s"] / walls[k]
+    if "grad_s" in f8:
+        r["speedup_vs_fused_one_device"] = f8["grad_s"] / walls[k]
+    try:
+        r["peak_gb"] = [(d.memory_stats() or {}).get("peak_bytes_in_use", 0) / 1e9 for d in devs]
+    except Exception:  # noqa: BLE001
+        pass
+    print(json.dumps(r), flush=True)
+
+
+def cmd_mgpu(a):
+    import subprocess
+
+    t_start = time.time()
+    out_path = RESULTS / f"41_timing_mgpu{a.layout}{a.out_tag}.json"
+    st = json.loads(out_path.read_text()) if out_path.is_file() else {"layout": a.layout, "runs": {}}
+    # count the GPUs without opening them: the children hold the devices, the parent never computes
+    q = subprocess.run(["nvidia-smi", "-L"], capture_output=True, text=True)
+    n = sum(ln.startswith("GPU ") for ln in q.stdout.splitlines()) or 1
+    st["n_devices"] = n
+
+    def save():
+        out_path.write_text(json.dumps(st, indent=1) + "\n")
+
+    Ds = [d for d in a.ndevs if d <= n]
+    todo = [(str(D), D) for D in Ds] + ([(f"{max(Ds)}_cache", max(Ds))] if Ds else [])
+    save()
+    for key, D in todo:
+        if key in st["runs"]:
+            continue
+        if st.get("running") == key:  # the process died in this stage (rerun by cc/gpu.sbatch)
+            st["runs"][key] = {"error": "process died"}
+            st.pop("running")
+            save()
+            continue
+        st["running"] = key
+        save()
+        cmd = [sys.executable, "-u", str(Path(__file__).resolve()), "mgpu-one", "--layout", a.layout,
+               "--ndev", str(D), "--cache-dir", str(a.cache_dir), "--block-pairs", str(a.block_pairs),
+               "--block-pairs-los", str(a.block_pairs_los)]
+        t = time.perf_counter()
+        p = subprocess.run(cmd, capture_output=True, text=True)
+        lines = [ln for ln in p.stdout.splitlines() if ln.startswith("{")]
+        r = json.loads(lines[-1]) if lines else {"error": f"exit {p.returncode}: {p.stderr[-800:]}"}
+        r["wall_s"] = time.perf_counter() - t
+        st["runs"][key] = r
+        st.pop("running", None)
+        print(f"  {key}:", json.dumps({k: v for k, v in r.items() if k not in ("parts", "per_device")}), flush=True)
+        save()
+    c0, c1 = st["runs"].get(str(max(Ds)) if Ds else "", {}), st["runs"].get(f"{max(Ds)}_cache" if Ds else "", {})
+    if "per_device" in c0 and "per_device" in c1:
+        cold = sum(sum(x["first_call_s"].values()) for x in c0["per_device"])
+        warm = sum(sum(x["first_call_s"].values()) for x in c1["per_device"])
+        st["cache"] = {"first_calls_cold_s": cold, "first_calls_cached_s": warm, "ratio": warm / cold}
+    ok = {k: v for k, v in st["runs"].items() if "speedup_same_work" in v and not k.endswith("_cache")}
+    if ok:
+        fz = json.loads((RESULTS / f"41_timing_fused{a.layout}.json").read_text())
+        nb = fz["n_blocks"]
+        G = len(fz["selected"])
+        st["extrapolation"] = {k: {"grad_s_all_blocks": v["together_wall_s"] * nb / G,
+                                   "rule": f"wall time for the {G} blocks x n_blocks / {G}"} for k, v in ok.items()}
+    save()
+    print(f"done in {time.time() - t_start:.1f} s")
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=("blocks", "nuts", "summary", "fused", "cache-probe", "ckpt", "ckpt-one"))
+    ap.add_argument("cmd", choices=("blocks", "nuts", "summary", "fused", "cache-probe", "ckpt", "ckpt-one",
+                                       "mgpu", "mgpu-one"))
     ap.add_argument("--layout", default="_s0")
     ap.add_argument("--max-blocks", type=int, default=0)
     ap.add_argument("--block-pairs", type=int, default=40)
@@ -561,12 +720,15 @@ def main(argv=None):
     ap.add_argument("--ckpt-blocks", nargs="+", default=None, help="ckpt: block names (default: see the docstring)")
     ap.add_argument("--variants", nargs="+", default=["remat", "plain"], choices=("plain", "remat"),
                     help="ckpt: the routes, in this order")
-    ap.add_argument("--out-tag", default="", help="ckpt: suffix of the output JSON (e.g. _v100, _h100)")
+    ap.add_argument("--out-tag", default="", help="ckpt, mgpu: suffix of the output JSON (e.g. _v100, _h100)")
     ap.add_argument("--block", default=None, help="ckpt-one: the block")
     ap.add_argument("--variant", default="plain", choices=("plain", "remat"), help="ckpt-one: the route")
+    ap.add_argument("--ndevs", type=int, nargs="+", default=[2, 4], help="mgpu: device counts")
+    ap.add_argument("--ndev", type=int, default=1, help="mgpu-one: device count")
     a = ap.parse_args(argv)
     {"blocks": cmd_blocks, "nuts": cmd_nuts, "summary": cmd_summary, "fused": cmd_fused,
-     "cache-probe": cmd_cache_probe, "ckpt": cmd_ckpt, "ckpt-one": cmd_ckpt_one}[a.cmd](a)
+     "cache-probe": cmd_cache_probe, "ckpt": cmd_ckpt, "ckpt-one": cmd_ckpt_one,
+     "mgpu": cmd_mgpu, "mgpu-one": cmd_mgpu_one}[a.cmd](a)
 
 
 if __name__ == "__main__":
