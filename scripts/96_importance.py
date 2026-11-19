@@ -10,6 +10,8 @@ r"""Part D: the posterior of the slice-0 fit by importance sampling of its Lapla
 covariance ``laplace_cov.npz`` (or ``--cov``, any npz with ``names``, ``theta``, ``free``, ``C``),
 or, with ``--nu 0``, a Gaussian with that covariance times ``--inflate``² (default 1.2).
 Only the free parameters move; the cosmology of the chain stays fixed unless ``--cov`` frees it.
+The proposal is truncated to the parameter ranges by rejection (the fit sits at or near the edge
+of 26 of its 79 ranges), so the posterior, truncated by the same box, is covered.
 
 ``eval`` evaluates the exact model (value only) at every draw, block by block: a task (``--nshard``
 tasks, the task index from ``SLURM_ARRAY_TASK_ID`` or ``--task``) compiles each of its blocks
@@ -91,27 +93,44 @@ def cmd_draw(a):
     w, V = np.linalg.eigh(0.5 * (C + C.T))
     w = np.clip(w, 1e-300, None)
     Ls = V * np.sqrt(w)
-    z = rng.standard_normal((a.n, f.size))
     p = f.size
-    if a.nu > 0:
-        u = rng.chisquare(a.nu, a.n)
-        dx = (z * np.sqrt(a.nu / u)[:, None]) @ Ls.T
-        m = np.einsum("ij,ij->i", z * np.sqrt(a.nu / u)[:, None], z * np.sqrt(a.nu / u)[:, None])
-        logq = -0.5 * (a.nu + p) * np.log1p(m / a.nu)
-        kind = f"student-t nu={a.nu}"
-    else:
-        dx = a.inflate * z @ Ls.T
-        m = np.einsum("ij,ij->i", z, z)
-        logq = -0.5 * m
-        kind = f"gaussian x{a.inflate}"
-    d = np.tile(x, (a.n, 1))
+
+    def batch(n):
+        z = rng.standard_normal((n, p))
+        if a.nu > 0:
+            z = z * np.sqrt(a.nu / rng.chisquare(a.nu, n))[:, None]
+            lq = -0.5 * (a.nu + p) * np.log1p(np.einsum("ij,ij->i", z, z) / a.nu)
+            dx = z @ Ls.T
+        else:
+            lq = -0.5 * np.einsum("ij,ij->i", z, z)
+            dx = a.inflate * z @ Ls.T
+        ins = np.all((x[f] + dx >= lo[f]) & (x[f] + dx <= hi[f]), axis=1)
+        return dx, lq, ins
+
+    # the proposal truncated to the parameter ranges (the prior box) by rejection: its normalising
+    # constant is the same for every draw and cancels in the self-normalised weights
+    kind = f"student-t nu={a.nu}" if a.nu > 0 else f"gaussian x{a.inflate}"
+    keep_dx, keep_lq, tried = [], [], 0
+    while sum(len(v) for v in keep_lq) < a.n and tried < a.max_tries:
+        dx, lq, ins = batch(200_000)
+        tried += len(lq)
+        keep_dx.append(dx[ins])
+        keep_lq.append(lq[ins])
+    dx, logq = np.concatenate(keep_dx)[: a.n], np.concatenate(keep_lq)[: a.n]
+    acc = sum(len(v) for v in keep_lq) / tried
+    kind += f", truncated to the ranges (acceptance {acc:.2e} of {tried} tried)"
+    d = np.tile(x, (len(dx), 1))
     d[:, f] += dx
-    inside = np.all((d[:, f] >= lo[f]) & (d[:, f] <= hi[f]), axis=1)
+    inside = np.ones(len(d), bool)
     out = run_dir(a)
     out.mkdir(parents=True, exist_ok=True)
     np.savez(out / "draws.npz", names=np.array(names), centre=x, theta0=th0, free=f, C=C, draws=d, logq=logq,
              inside=inside, kind=kind)
-    print(out / "draws.npz", a.n, "draws,", kind, f"{inside.mean():.3f} inside the ranges")
+    print(out / "draws.npz", len(d), "draws,", kind)
+    near = [(names[i], float(min(x[i] - lo[i], hi[i] - x[i]) / np.sqrt(C[j, j]))) for j, i in enumerate(f)]
+    print("within 1 sigma of a range edge:", [n for n, v in near if v < 1])
+    if len(d) < a.n:
+        raise RuntimeError(f"only {len(d)} draws inside the ranges after {tried} tries")
     print("done in draw")
 
 
@@ -338,6 +357,7 @@ def main(argv=None):
     ap.add_argument("--nu", type=float, default=5.0, help="draw: Student-t degrees of freedom (0: Gaussian)")
     ap.add_argument("--inflate", type=float, default=1.2, help="draw, Gaussian: scale of the covariance's square root")
     ap.add_argument("--seed", type=int, default=96)
+    ap.add_argument("--max-tries", type=int, default=100_000_000, help="draw: candidates tried at most")
     ap.add_argument("--cov", default=None, help="draw: an npz with names, theta, free, C (default: the iterate's laplace_cov.npz)")
     ap.add_argument("--nshard", type=int, default=1)
     ap.add_argument("--task", type=int, default=None)
