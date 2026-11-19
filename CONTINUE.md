@@ -14,9 +14,10 @@
 - 33 sub-block validation (64406476): the Gaussian covariance holds within 20 per cent for galaxy × galaxy (1.20), galaxy × shear (0.99), galaxy × X-ray (1.28); it underestimates the y blocks (2.7–6.2) and shear × X-ray (2.6); the AGN ratios of 0.5 come from the wrong AGN mask area in 33.
 - Started: Gantt draft (erc-cog-prop, purple); X-ray photon-noise limit (11_ellmax_xray, done); checkpointed line-of-sight gradient (`remat_los` in ggah_sens_study 6fbb3ae; jobs 64407514 V100, 64407515 H100); N6 intrinsic alignments in ggah_sens_study (`93_public_2031_ia.py` 851a95e, job 64407592).
 
+- Dropped as not needed for the proposal: the multi-GPU timing (`mgpu` mode written, jobs 64411292–3 cancelled before running) and the fix of 33 (stopped; partial diff kept outside the repository).
+
 **Next.**
-- Multi-GPU: the four devices did not overlap; dispatch each device's program from its own thread (or one sharded program) before quoting a multi-GPU number.
-- Check the galaxy × shear data − model χ²/p of 326 in 33, and the AGN mask area it reads.
+- The checkpointed line-of-sight jobs (64407514 V100, 64407515 H100), the resumed `blocks` jobs (64406477–8), the slice-0 fused job (64336025) and N6 (64407592); then the compute line of `resources.tex` and R4.
 - The line-of-sight gradients: H100 (80 GB) or checkpointing (`jax.checkpoint`) over the line-of-sight integral.
 - 33 results into R4 and task (ii); check the AGN f_sky (2 379 deg² from the masks against 11 152 deg² used elsewhere).
 
