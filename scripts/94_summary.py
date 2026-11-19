@@ -94,15 +94,17 @@ def section_timing(nuts, blocks):
     for lay, d in blocks.items():
         if d is None:
             continue
-        b = list(d["blocks"].values())
+        allb = d["blocks"]
+        oom = sorted(k for k, x in allb.items() if "grad_s" not in x)  # gradient failed (out of memory on the device)
+        b = [x for x in allb.values() if "grad_s" in x]
         grad = np.mean([x["grad_s"] for x in b])
         val = np.mean([x["value_s"] for x in b])
         out["layouts"][lay] = {
             "device": d["device"], "n_params": d["n_params"], "n_blocks": d["n_blocks"], "blocks_timed": len(b),
-            "complete": len(b) == d["n_blocks"],
+            "blocks_grad_failed": oom, "complete": len(b) == d["n_blocks"],
             "value_s_est": float(val * d["n_blocks"]), "grad_s_est": float(grad * d["n_blocks"]),
             "grad_compile_s_est": float(np.mean([x["grad_compile_s"] for x in b]) * d["n_blocks"]),
-            "rule": "mean over the timed blocks times n_blocks, blocks run one after another"}
+            "rule": "mean over the blocks with a gradient times n_blocks, blocks run one after another"}
     s5 = out["layouts"].get(RUN)
     g = (out["nuts_gaussian"] or {}).get("embedded_212")
     if s5 and g:

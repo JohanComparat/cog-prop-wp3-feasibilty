@@ -1,5 +1,20 @@
 # Where this stands, and what happens next
 
+## 2026-11-19 — CC results: compression on v1.7.0, timing half-way, line-of-sight gradient out of memory
+
+**Done.**
+- E five-shell compression on v1.7.0 (job 64307020, `results/32_compression_S5_public_2031.json`): exact score compression loses nothing; a covariance of the 212 scores from 1 000 simulations widens σ(S8) by 3.5–4.6 per cent, from 3 000 by 0.9–1.4 per cent (k_max 0.3–10); weights from the diagonal covariance lose 34–64 per cent.
+- F `blocks` hit the 24 h limit at 62 of 101 (`_s0`) and 142 of 288 (`S5_public_2031`) blocks; resumed as 64406477, 64406478.
+  Five-shell, blocks in sequence on a V100: 347 s per gradient, 115 s per value, 40 h of compilation; about 5 500 GPU hours per NUTS chain (lower limit).
+  The gradient of 10 slice-0 line-of-sight blocks runs out of memory on a V100 (23–26 GB reverse mode, 88–93 GB forward); 94 now skips and lists them.
+- 33 sub-block validation failed (it read vector v0; the `_cuts` mask is on v1): resubmitted with `WP3FEAS_VECTOR` = v1 as 64406476.
+- `94_summary.py` and the `wpThree` macros refreshed; the E TODO in B2 removed.
+
+**Next.**
+- Fused and multi-GPU timing (64336025, 64336026): the number for R4 and `resources.tex`.
+- The line-of-sight gradients: H100 (80 GB) or checkpointing (`jax.checkpoint`) over the line-of-sight integral.
+- 33 results into R4 and task (ii); check the AGN f_sky (2 379 deg² from the masks against 11 152 deg² used elsewhere).
+
 ## 2026-11-18 — Part D frozen; strategy to the proposal
 
 **Done.**
