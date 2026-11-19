@@ -16,8 +16,12 @@
 
 - Dropped as not needed for the proposal: the multi-GPU timing (`mgpu` mode written, jobs 64411292–3 cancelled before running) and the fix of 33 (stopped; partial diff kept outside the repository).
 
+- Checkpointing the line-of-sight nodes does not lower the peak memory (it raises it on the H100): dropped. The H100 (80 GB) fits the plain line-of-sight gradient and runs it 4.1 times faster than a V100.
+- N6 job 64407592 failed on a float() of a one-element array (ggah_sens_study 93 l.125); fixed (7624267), copy at CC updated, resubmitted as 64430378.
+- Submitted 64430384: the eight five-shell blocks of the fused test on an H100, to turn the V100 gradient time (264 s) into an H100 one.
+
 **Next.**
-- The checkpointed line-of-sight jobs (64407514 V100, 64407515 H100), the resumed `blocks` jobs (64406477–8), the slice-0 fused job (64336025) and N6 (64407592); then the compute line of `resources.tex` and R4.
+- 64430384 (H100 five-shell blocks), 64430378 (N6), the resumed `blocks` jobs (64406477–8), the slice-0 fused job (64336025); then the compute line of `resources.tex` and R4 on H100 numbers.
 - The line-of-sight gradients: H100 (80 GB) or checkpointing (`jax.checkpoint`) over the line-of-sight integral.
 - 33 results into R4 and task (ii); check the AGN f_sky (2 379 deg² from the masks against 11 152 deg² used elsewhere).
 
