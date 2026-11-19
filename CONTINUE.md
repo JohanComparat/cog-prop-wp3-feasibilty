@@ -1,5 +1,17 @@
 # Where this stands, and what happens next
 
+## 2026-11-20 — slice-0 posterior: cosmology free, importance sampling, injection test
+
+**Done.**
+- `scripts/95_laplace_cosmo.py` (CC job 64431100, `results/95_laplace_cosmo_s0_cuts_it21.json`): Laplace at `_cuts` it 21 with the cosmology free (84 parameters, Planck/BBN priors on h, n_s, Ω_b): σ(S8) = 0.0071 (0.9 per cent), σ(Ω_m) = 0.012, σ(σ8) = 0.019, r(S8, Ω_m) = −0.30; the astrophysical errors grow by 1.001 (median), 1.19 at most (`log10_eps_agn_p`); the S(k) band at z = 0.15 widens about 1.3 times. The shifted values after one linearised step are not physical (S(k = 1) 1.07): only the errors are quoted.
+- `scripts/96_importance.py`: 4 000 Student-t (ν = 5) draws from the Laplace posterior, truncated to the prior box, exact χ² per draw; CC jobs 64431203 (draw, done), 64431211 (eval array 0–19), 64431212 (chi2). 26 of the 79 free parameters lie within 2.5σ of a box edge (`z_anchor`, `sigma_scatter` on it), so k-hat > 0.7 is expected.
+- `scripts/97_injection.py`: truth = `_cuts` it 21, start = the defaults; synthetic vector = truth + one jackknife draw (seed 1); CC jobs 64431116 (make), 64431117 (seed), 64431125–64431174 (chain `_inj` it 3–7, H100, 4 shards); `cc/submit_map.sh` takes `PARTITION`.
+
+**Next.**
+- 96: fetch draws.npz and chi2.npz, run `combine` (k-hat, corner plots). If k-hat > 0.7: NUTS on the Gauss–Newton surrogate from the stored per-block Jacobians, with the prior bounds, then reweight with the exact χ².
+- A Gauss–Newton chain with the cosmology free, for converged S8 and Ω_m.
+- 97: `summary` per iterate; continue with START=8 if not converged.
+
 ## 2026-11-19 — CC results: compression on v1.7.0, timing half-way, line-of-sight gradient out of memory
 
 **Done.**
