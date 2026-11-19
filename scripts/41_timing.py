@@ -21,6 +21,15 @@ covariance embedded and the remaining directions spread over the same range of w
 gradient evaluations per effective sample, which do not depend on the cost of the model
 once the target is close to Gaussian (a lower limit for the real posterior).
 
+``fused`` measures what a production gradient would cost, on a subset of blocks (those already
+timed by ``blocks``, spread over the list, so their sequential times are read, not rerun):
+(a) the gradient of the sum over ``G`` blocks as one jitted program, against the sum of their
+sequential times, for each ``--group-sizes``; (b) the largest group split over 2, 4, ... GPUs
+(each device holds one jitted group, all dispatched before any is awaited), when the job has
+more than one device; (c) the compile time of the smallest group in a fresh process that reads
+the persistent compilation cache filled by this one (``--cache-dir``).
+It writes ``results/41_timing_fused<layout>.json`` after each stage and resumes from it.
+
 ``summary`` combines them into ``results/41_timing.json``: the wall time of a chain of
 ``--ess`` effective samples per parameter at 212 parameters = gradient evaluations per
 effective sample x ESS x the steady gradient time of the five-shell model.
@@ -139,6 +148,198 @@ def cmd_blocks(a):
     print(f"done in {time.time() - t_start:.1f} s")
 
 
+def _select_blocks(info, layout, n, fixed=None):
+    """The ``n`` blocks of the subset: those already timed by ``blocks``, evenly spread over the
+    list; untimed blocks fill in when fewer are timed. ``fixed`` (names) keeps an earlier choice."""
+    names = [b["name"] for b in info["blocks"]]
+    p = _state_path(layout)
+    timed = json.loads(p.read_text())["blocks"] if p.is_file() else {}
+    if fixed:
+        by = {b["name"]: b for b in info["blocks"]}
+        return [by[k] for k in fixed], {k: timed[k] for k in fixed if k in timed}
+    pool = [k for k in names if k in timed and "grad_s" in timed[k]] or names
+    if len(pool) < n:
+        pool = pool + [k for k in names if k not in pool]
+    idx = np.unique(np.linspace(0, len(pool) - 1, n).round().astype(int))
+    sel = [pool[i] for i in idx]
+    by = {b["name"]: b for b in info["blocks"]}
+    return [by[k] for k in sel], {k: timed[k] for k in sel if k in timed}
+
+
+def _group_grad(blocks, th):
+    """The jitted reverse-mode gradient of sum_b c_b . f_b over a group of blocks."""
+    import jax
+    import jax.numpy as jnp
+    cs = []
+    for i, b in enumerate(blocks):
+        shape = jax.eval_shape(b["f"], th).shape
+        cs.append(jnp.asarray(np.random.default_rng(i).standard_normal(shape)))
+    fs = [b["f"] for b in blocks]
+
+    def scalar(x):
+        return sum(jnp.sum(c * f(x)) for c, f in zip(cs, fs))
+
+    return jax.jit(jax.grad(scalar))
+
+
+def _enable_cache(d):
+    import jax
+    Path(d).mkdir(parents=True, exist_ok=True)
+    jax.config.update("jax_compilation_cache_dir", str(d))
+    for k, v in (("jax_persistent_cache_min_compile_time_secs", 0.0),
+                 ("jax_persistent_cache_min_entry_size_bytes", -1)):
+        try:
+            jax.config.update(k, v)
+        except Exception:  # noqa: BLE001  (option absent in this jax)
+            pass
+
+
+def _build(layout, a):
+    import jax.numpy as jnp
+    from ggah_sens_study.joint import model as M
+    cfg, fid = _config(layout)
+    t0 = time.perf_counter()
+    _, info = M.build(fid, cfg, matter="closure", jit=False, block_pairs=a.block_pairs,
+                      block_pairs_los=a.block_pairs_los)
+    th = jnp.asarray(np.asarray(M.theta0(fid, cfg)))
+    return info, th, time.perf_counter() - t0
+
+
+def cmd_cache_probe(a):
+    """Child process of ``fused``: the first call of the smallest group with the cache filled."""
+    import jax
+    _enable_cache(a.cache_dir)
+    info, th, tb = _build(a.layout, a)
+    st = json.loads((RESULTS / f"41_timing_fused{a.layout}.json").read_text())
+    blocks, _ = _select_blocks(info, a.layout, max(a.group_sizes), st["selected"])
+    g = _group_grad(blocks[:min(a.group_sizes)], th)
+    t = time.perf_counter()
+    jax.block_until_ready(g(th))
+    print(json.dumps({"build_s": tb, "first_call_s": time.perf_counter() - t}), flush=True)
+
+
+def cmd_fused(a):
+    import subprocess
+
+    import jax
+
+    t_start = time.time()
+    _enable_cache(a.cache_dir)
+    out_path = RESULTS / f"41_timing_fused{a.layout}.json"
+    st = json.loads(out_path.read_text()) if out_path.is_file() else {"layout": a.layout}
+
+    def save():
+        out_path.write_text(json.dumps(st, indent=1) + "\n")
+
+    info, th, tb = _build(a.layout, a)
+    devs = jax.devices()
+    gmax = max(a.group_sizes)
+    blocks, seq = _select_blocks(info, a.layout, gmax, st.get("selected"))
+    st.update(n_blocks=len(info["blocks"]), n_params=int(th.size), build_s=tb,
+              devices=[str(d) for d in devs], selected=[b["name"] for b in blocks],
+              sequential={k: {x: v.get(x) for x in ("rows", "grad_s", "grad_compile_s", "grad_mode")}
+                          for k, v in seq.items()},
+              cache_dir=str(a.cache_dir))
+    print(f"{a.layout}: {len(info['blocks'])} blocks, {len(devs)} device(s), subset {len(blocks)}", flush=True)
+    save()
+    # (a) one program per group on one device
+    st.setdefault("fused", {})
+    for G in sorted(a.group_sizes):
+        if str(G) in st["fused"]:
+            continue
+        if st.get("running") == f"fused{G}":  # the process died in this stage (rerun by cc/gpu.sbatch)
+            st["fused"][str(G)] = {"error": "process died (out of memory?)"}
+            st.pop("running")
+            save()
+            continue
+        st["running"] = f"fused{G}"
+        save()
+        grp = blocks[:G]
+        r = {"blocks": [b["name"] for b in grp]}
+        try:
+            g = _group_grad(grp, th)
+            t = time.perf_counter()
+            jax.block_until_ready(g(th))
+            r["compile_s"] = time.perf_counter() - t
+            r["grad_s"] = _median_time(g, th)
+        except Exception as e:  # noqa: BLE001  (out of memory)
+            r["error"] = f"{type(e).__name__}: {str(e)[:300]}"
+        ss = [seq[b["name"]]["grad_s"] for b in grp if b["name"] in seq and "grad_s" in seq[b["name"]]]
+        if len(ss) == len(grp):
+            r["sequential_grad_s"] = float(sum(ss))
+            r["sequential_compile_s"] = float(sum(seq[b["name"]].get("grad_compile_s", 0.0) for b in grp))
+            if "grad_s" in r:
+                r["speedup"] = r["sequential_grad_s"] / r["grad_s"]
+        st["fused"][str(G)] = r
+        st.pop("running", None)
+        print(f"  fused G={G}:", json.dumps({k: v for k, v in r.items() if k != "blocks"}), flush=True)
+        save()
+        jax.clear_caches()
+    # (b) the largest group over several devices
+    st.setdefault("multi_gpu", {})
+    for D in [d for d in (2, 4, 8) if d <= len(devs) and d <= gmax]:
+        if str(D) in st["multi_gpu"]:
+            continue
+        if st.get("running") == f"multi{D}":
+            st["multi_gpu"][str(D)] = {"error": "process died (out of memory?)"}
+            st.pop("running")
+            save()
+            continue
+        st["running"] = f"multi{D}"
+        save()
+        r = {}
+        try:
+            parts = [blocks[i::D] for i in range(D)]
+            ths = [jax.device_put(th, devs[i]) for i in range(D)]
+            gs = [_group_grad(parts[i], ths[i]) for i in range(D)]
+            t = time.perf_counter()
+            for i in range(D):
+                jax.block_until_ready(gs[i](ths[i]))
+            r["compile_s_sum"] = time.perf_counter() - t
+
+            def run_all(_):
+                return [gs[i](ths[i]) for i in range(D)]
+
+            r["grad_s"] = _median_time(run_all, None)
+            f1 = st["fused"].get(str(gmax), {})
+            if "grad_s" in f1:
+                r["speedup_vs_one_device"] = f1["grad_s"] / r["grad_s"]
+        except Exception as e:  # noqa: BLE001
+            r["error"] = f"{type(e).__name__}: {str(e)[:300]}"
+        st["multi_gpu"][str(D)] = r
+        st.pop("running", None)
+        print(f"  {D} devices:", json.dumps(r), flush=True)
+        save()
+        jax.clear_caches()
+    # (c) the persistent cache, read by a fresh process
+    if "cache" not in st:
+        cmd = [sys.executable, "-u", str(Path(__file__).resolve()), "cache-probe", "--layout", a.layout,
+               "--cache-dir", str(a.cache_dir), "--block-pairs", str(a.block_pairs),
+               "--block-pairs-los", str(a.block_pairs_los), "--group-sizes", *map(str, a.group_sizes)]
+        p = subprocess.run(cmd, capture_output=True, text=True)
+        lines = [ln for ln in p.stdout.splitlines() if ln.startswith("{")]
+        r = json.loads(lines[-1]) if lines else {"error": p.stderr[-500:]}
+        f0 = st["fused"].get(str(min(a.group_sizes)), {})
+        if "compile_s" in f0 and "first_call_s" in r:
+            r["compile_s_cold"] = f0["compile_s"]
+        st["cache"] = r
+        print("  cache:", json.dumps(r), flush=True)
+        save()
+    # extrapolation to every block: the per-block fused time of the largest group that ran
+    ok = [int(G) for G, r in st["fused"].items() if "grad_s" in r]
+    if ok:
+        G = max(ok)
+        per = st["fused"][str(G)]["grad_s"] / G
+        ex = {"group": G, "grad_s_per_block": per, "grad_s_all_one_device": per * st["n_blocks"]}
+        for D, r in st["multi_gpu"].items():
+            if "speedup_vs_one_device" in r:
+                ex[f"grad_s_all_{D}_devices"] = per * st["n_blocks"] / r["speedup_vs_one_device"]
+        st["extrapolation"] = ex
+        print("  extrapolation:", json.dumps(ex), flush=True)
+    save()
+    print(f"done in {time.time() - t_start:.1f} s")
+
+
 def _gaussian_targets():
     """``{name: covariance}``: the Laplace covariance of script 26 and its 212-parameter extension."""
     z = np.load(LAPLACE, allow_pickle=True)
@@ -227,7 +428,7 @@ def cmd_summary(a):
 
 def main(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=("blocks", "nuts", "summary"))
+    ap.add_argument("cmd", choices=("blocks", "nuts", "summary", "fused", "cache-probe"))
     ap.add_argument("--layout", default="_s0")
     ap.add_argument("--max-blocks", type=int, default=0)
     ap.add_argument("--block-pairs", type=int, default=40)
@@ -235,8 +436,11 @@ def main(argv=None):
     ap.add_argument("--warmup", type=int, default=1000)
     ap.add_argument("--samples", type=int, default=1000)
     ap.add_argument("--ess", type=int, default=1000)
+    ap.add_argument("--group-sizes", type=int, nargs="+", default=[4, 8], help="fused: blocks per program")
+    ap.add_argument("--cache-dir", type=Path, default=DATA / "jax_cache_41", help="fused: persistent compilation cache")
     a = ap.parse_args(argv)
-    {"blocks": cmd_blocks, "nuts": cmd_nuts, "summary": cmd_summary}[a.cmd](a)
+    {"blocks": cmd_blocks, "nuts": cmd_nuts, "summary": cmd_summary, "fused": cmd_fused,
+     "cache-probe": cmd_cache_probe}[a.cmd](a)
 
 
 if __name__ == "__main__":
