@@ -17,8 +17,7 @@ For each shell of S5_public_2031, :math:`\ell_k = k\,\chi(z_{\rm eff})` at k = 1
   ACT DR6 noise of the run (power law through N(1000), N(3000), floored at the white level
   1.8e-18 sr) divided by :math:`B_\ell^2`.
 
-The X-ray maps carry only their PSF here: their photon-noise crossing needs the gas model's
-:math:`C_\ell`, which is not in the run's outputs.
+The X-ray maps carry only their PSF here; ``--xray`` adds their photon noise (below).
 The fraction of the Fisher information on S8 above k is :math:`1 - F(k)/F(10)` with
 :math:`F = \sigma(S_8)^{-2}` of the run's T5, C1+SSC, E1 table (all maps together; the
 information per map needs the per-block Jacobians, at CC).
@@ -31,6 +30,17 @@ for each family (gal, agn, ks, y, x, x_arch) the T5 Fisher matrix (C1+SSC, E1, t
 calibration) is recomputed without the pairs that involve it (``analysis.tier_pairs`` patched),
 at k_max = 1, 3, 10 h/Mpc, and the family's share is :math:`1 - F_{\rm without}/F_{\rm all}`
 on S8.  Writes results/11_ellmax_split.json.
+
+``--xray`` (dev env, seconds: reads only ``v0.npy``, ``info.npz`` and ``config.json`` of the run)
+adds the photon noise of the X-ray maps.  The run's model vector at the defaults, binned on its
+24 bands (``covariance.binned``), gives :math:`C_\ell^{XX}` of each map and :math:`C_\ell^{gX}`
+of each galaxy sample; ``covariance.noise_power`` gives the noise, :math:`1/\bar n_\gamma` [sr]
+for an X-ray map (its photons per sr) and :math:`1/(\bar n V_s/\Omega)` for a galaxy sample.
+For each map the multipole where :math:`C_\ell^{XX}` falls below :math:`1/\bar n_\gamma`;
+for each shell and map, with the densest galaxy sample of the shell, the signal-to-noise of the
+cross per band, :math:`\sqrt{N_{\rm modes}}\,|C^{gX}|/\sqrt{(C^{gg}+N_g)(C^{XX}+N_X)+(C^{gX})^2}`
+with :math:`N_{\rm modes} = (2\ell+1)\Delta\ell f_{\rm sky}` (``cfg.area(g, X)``), and the
+largest band centre where it is at least 1.  Writes results/11_ellmax_xray.json.
 """
 
 import json
@@ -221,5 +231,86 @@ def split():
     print(rec.write("11_ellmax_split"))
 
 
+def xray():
+    """Photon-noise limits of the X-ray maps and of the galaxy x X-ray crosses (S5_public_2031)."""
+    from ggah_sens_study.fiducial import load_fiducial
+    from ggah_sens_study.joint import covariance as CV
+    from ggah_sens_study.joint.bias import load_config
+    from ggah_sens_study.joint.survey import Noise
+
+    rec = Record(__file__)
+    for f in ("v0.npy", "info.npz", "config.json"):
+        rec.add_input(RUN / f)
+    v0 = np.load(RUN / "v0.npy")
+    raw = np.load(RUN / "info.npz", allow_pickle=True)
+    info = {k: raw[k] for k in raw.files}
+    info["pairs"] = [tuple(map(str, p)) for p in raw["pairs"]]
+    info["discrete"] = [str(d) for d in raw["discrete"]]
+    info["src_names"] = [str(n) for n in raw["src_names"]]
+    info["photons_sr"] = {str(n): float(v) for n, v in zip(raw["x_names"], raw["x_photons"])}
+    xmaps = json.loads(str(raw["x_maps"]))
+    cfg = load_config(RUN)
+    fid = load_fiducial()
+    nbar, C = CV.binned(v0, info)
+    N = CV.noise_power(cfg, Noise(), info, nbar, fid.cosmology)
+    ell = np.asarray(info["centres"], float)
+    edges = np.sqrt(ell[1:] * ell[:-1])
+    edges = np.concatenate([[ell[0] ** 2 / edges[0]], edges, [ell[-1] ** 2 / edges[-1]]])
+    dell = np.diff(edges)
+
+    def cl(a, b):
+        return C.get((a, b), C.get((b, a)))
+
+    def nz(name):
+        v = N.get(name, 0.0)
+        return np.broadcast_to(np.asarray(v, float), ell.shape)
+
+    autos = {}
+    for b, nph in info["photons_sr"].items():
+        c = cl(b, b)
+        if c is None:
+            continue
+        autos[b] = {"family": xmaps.get(b, {}).get("family", "x"), "photons_sr": nph, "noise_sr": 1.0 / nph,
+                    "ell_noise": crossing(ell, np.abs(c), nz(b)),
+                    "signal_over_noise": {f"{L:.0f}": float(np.interp(np.log(L), np.log(ell), np.abs(c) / nz(b)))
+                                          for L in (100.0, 1000.0, 3000.0)}}
+        print(f"{b:6s} C_XX = N_X at ell {autos[b]['ell_noise']}", flush=True)
+
+    shells = np.asarray(info["shells"], float)
+    tsh = np.asarray(info["tracer_shell"])
+    tnames = [str(t) for t in info["tracer_names"]]
+    cross = []
+    for s, (zlo, zhi) in enumerate(shells):
+        gals = [t for t, sh in zip(tnames, tsh) if sh == s and t in info["discrete"]
+                and not t.startswith("a") and cl(t, t) is not None]
+        g = min(gals, key=lambda t: float(nz(t)[0]))       # the densest sample of the shell
+        row = {"shell": f"{zlo:.1f}-{zhi:.1f}", "galaxy": g, "chi_eff": float(info["chi_eff_shells"][s]),
+               "maps": {}}
+        for b in autos:
+            cgx = cl(g, b)
+            if cgx is None:
+                continue
+            fsky = cfg.area(g, b) / (4 * np.pi * SQDEG_PER_SR)
+            nm = (2 * ell + 1) * dell * fsky
+            sn = np.sqrt(nm) * np.abs(cgx) / np.sqrt((cl(g, g) + nz(g)) * (cl(b, b) + nz(b)) + cgx ** 2)
+            ok = np.nonzero(sn >= 1.0)[0]
+            row["maps"][b] = {"ell_last_sn1": float(ell[ok[-1]]) if ok.size else None,
+                              "k_last_sn1": float(ell[ok[-1]] / info["chi_eff_shells"][s]) if ok.size else None,
+                              "sn_total": float(np.sqrt(np.sum(sn ** 2))), "fsky": float(fsky)}
+        ks = [m["k_last_sn1"] for m in row["maps"].values() if m["k_last_sn1"]]
+        print(f"shell {row['shell']} ({g}): last band with S/N >= 1 at k = "
+              f"{min(ks):.2f}-{max(ks):.2f} h/Mpc" if ks else f"shell {row['shell']}: none", flush=True)
+        cross.append(row)
+    rec.data.update(run="S5_public_2031", sens=str(SENS), bands_ell=ell.tolist(), autos=autos, cross=cross,
+                    rule="auto: first band where C_XX < 1/nbar_gamma; cross: last band with per-band S/N >= 1, "
+                         "densest galaxy sample of the shell, model at the defaults (v0)")
+    print(rec.write("11_ellmax_xray"))
+
+
 if __name__ == "__main__":
-    split() if "--split" in sys.argv else main()
+    if "--split" in sys.argv:
+        split()
+    elif "--xray" in sys.argv:
+        xray()
+    else:
+        main()
