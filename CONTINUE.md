@@ -10,8 +10,13 @@
 - 33 sub-block validation failed (it read vector v0; the `_cuts` mask is on v1): resubmitted with `WP3FEAS_VECTOR` = v1 as 64406476.
 - `94_summary.py` and the `wpThree` macros refreshed; the E TODO in B2 removed.
 
+- Fused timing, five shells (64336026): fusing gains 1.1–1.2 in gradient time and costs 3 times the compile; 4 GPUs gain nothing (1.07), the dispatch does not overlap; one full gradient about 264 s on a V100.
+- 33 sub-block validation (64406476): the Gaussian covariance holds within 20 per cent for galaxy × galaxy (1.20), galaxy × shear (0.99), galaxy × X-ray (1.28); it underestimates the y blocks (2.7–6.2) and shear × X-ray (2.6); the AGN ratios of 0.5 come from the wrong AGN mask area in 33.
+- Started: Gantt draft (erc-cog-prop, purple); X-ray photon-noise limit (11_ellmax_xray, done); checkpointed line-of-sight gradient (`remat_los` in ggah_sens_study 6fbb3ae; jobs 64407514 V100, 64407515 H100); N6 intrinsic alignments in ggah_sens_study (`93_public_2031_ia.py` 851a95e, job 64407592).
+
 **Next.**
-- Fused and multi-GPU timing (64336025, 64336026): the number for R4 and `resources.tex`.
+- Multi-GPU: the four devices did not overlap; dispatch each device's program from its own thread (or one sharded program) before quoting a multi-GPU number.
+- Check the galaxy × shear data − model χ²/p of 326 in 33, and the AGN mask area it reads.
 - The line-of-sight gradients: H100 (80 GB) or checkpointing (`jax.checkpoint`) over the line-of-sight integral.
 - 33 results into R4 and task (ii); check the AGN f_sky (2 379 deg² from the masks against 11 152 deg² used elsewhere).
 
