@@ -1,5 +1,16 @@
 # Where this stands, and what happens next
 
+## 2026-11-20 (afternoon) — importance sampling fails; H100 five-shell timing; N6
+
+**Done.**
+- 96 combine (`results/96_importance_s0_cuts_it21.json`): k-hat 49, ESS 7 of 2 365 finite draws; 1 635 of 4 000 draws give a non-finite model; the finite χ² have median 30 509 against 6 260 at the MAP (5th percentile 6 628), where a Gaussian posterior of 79 parameters predicts about 6 340. The Laplace covariance is far wider than the true curvature in the gas directions: the largest χ² and the non-finite draws go with `alpha_tr_p_var`, then `alpha_out_n_var`, `sig_bh`, `log10_eps_agn_p`, `alpha_out_z`. The Laplace errors of the gas and AGN parameters, and the S(k) band built on them, are not a posterior.
+- H100 five-shell blocks (job 64430384; numbers from the CC log, the JSON at CC came back empty): steady gradient 0.31–0.45 s per block (mean 0.361 s) against 0.76–1.38 s (mean 1.096 s) on a V100, 3.0 times faster; compile 99–264 s per block; peak 9.3–11.7 GB. Full five-shell gradient, blocks in sequence: 288 × 0.361 = 104 s on one H100, so about 1 650 H100 hours per NUTS chain of 1 000 effective samples (Gaussian target, lower limit).
+- N6 (ggah_sens_study 93, job 64430378, `n6_ia_S5_public_2031/n6_summary.json`), T5, C1+SSC, E2: freeing a red NLA amplitude per source bin (prior 5.74) widens σ(S8) by 0.6, 1.4, 1.5 per cent at k_max 1, 3, 10; blue per bin (prior 2) 0.5, 1.1, 1.3 per cent; the one-halo amplitude (prior 0.01) 0.3, 0.3, 0.1 per cent; all together 0.7, 1.1, 1.2 per cent. Fixed, the one-halo term must stay below a_1h = 4e-3, 4e-4, 1e-4 for a 0.3σ shift: it has to be fitted.
+
+**Next.**
+- The slice-0 posterior: either NUTS on the exact model (slice-0 gradient about 75 s on an H100) or importance sampling from a proposal narrowed in the gas directions (the curvature from the χ² of the 96 draws).
+- Compute line and R4 from the H100 numbers; N6 into B2 (I9).
+
 ## 2026-11-20 — slice-0 posterior: cosmology free, importance sampling, injection test
 
 **Done.**
