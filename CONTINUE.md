@@ -1,5 +1,14 @@
 # Where this stands, and what happens next
 
+## 2026-11-20 (evening) — Igo et al. (2026) in the slice-0 fit
+
+**Done.**
+- `wp3feas/igo26.py` and `26_map_fit.py igo / igo-check` (5f02353): Igo's p(log λ_SAR | M*, z), three z bins at 0.03–0.164, as one extra block of the χ² with `WP3FEAS_EXTRA=igo26`; Jacobian by `jax.jacfwd` over the AGN sector and obscuration parameters (the stellar-mass weights frozen per iterate); `cc/submit_map.sh` takes `EXTRA`.
+- CC: chain `_igo` seeded from `_cuts` it 21; check 64457194 (vector χ² unchanged, Igo χ² at it 21 and the defaults, jacfwd against finite differences); 64457195 (igo it 21); 64457196–64457239 (iterates 22–25, H100); iterate 26 cut by the 100-job GPU cap.
+
+**Next.**
+- Read `results/26_igo_check_s0_igo_it21.json`; continue with START=26 AFTER=64457239 once the queue has room; compare with `_cuts` it 21 (AGN parameters, vector χ²), then 95 and 96 on the new covariance.
+
 ## 2026-11-20 (afternoon) — importance sampling fails; H100 five-shell timing; N6
 
 **Done.**
