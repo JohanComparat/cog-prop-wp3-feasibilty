@@ -38,6 +38,7 @@ import ggah_sens_study  # noqa: E402,F401
 from wp3feas.model import NZ_FILE, build_public, projection, public_config  # noqa: E402
 from wp3feas.provenance import DATA, Record  # noqa: E402
 from wp3feas.vector import VECTOR, hartlap, jk_cov, load_vector  # noqa: E402
+from wp3feas import igo26 as IGO  # noqa: E402
 
 S22 = importlib.import_module("22_fisher_public")
 FIXED = ("Omega_m", "ln10A_s", "h", "n_s", "Omega_b")
@@ -150,13 +151,22 @@ def point(k, slices):
     """The model, Jacobian, residuals and blocks of iterate ``k``."""
     meta, D, J = S22._assemble(it_dir(k))
     P, r, blocks = system(D, slices)
-    return meta, P @ J, r, blocks, theta_of(k)
+    Jd = P @ J
+    if IGO.enabled():
+        # Igo et al. (2026) as one more block of rows (WP3FEAS_EXTRA=igo26; `26 igo --it k` first)
+        re, Je, iCe = IGO.terms(it_dir(k))
+        n = r.size
+        r, Jd = np.concatenate([r, re]), np.vstack([Jd, Je])
+        blocks = blocks + [(np.arange(n, n + re.size), iCe)]
+    return meta, Jd, r, blocks, theta_of(k)
 
 
 def objective(k, r, blocks, x, th0, sp):
     pr = np.where(np.isfinite(sp), 1.0 / sp ** 2, 0.0)
     c = float(sum(r[s] @ iC @ r[s] for s, iC in blocks))
     o = {"chi2": c, "prior": float(np.sum(pr * (x - th0) ** 2)), "n_rows": int(sum(s.size for s, _ in blocks))}
+    if IGO.enabled():
+        o["chi2_igo26"], o["n_igo26"] = IGO.chi2(it_dir(k))
     (it_dir(k) / "objective.json").write_text(json.dumps(o))
     return o
 
@@ -372,10 +382,15 @@ def cmd_search(a):
     pr = np.where(np.isfinite(sp), 1.0 / sp ** 2, 0.0)
     ob = json.loads((it_dir(h["base"]) / "objective.json").read_text())
     res = []
+    igo = IGO.Igo26Model(public_config(**S22.LAYOUTS[S22.LAYOUT]), xb) if IGO.enabled() else None
     for t, p, Dt in zip(FRACTIONS, pts, D):
         _, r, blocks = system(Dt, h.get("slices"))
         n = int(sum(s.size for s, _ in blocks))
         c = float(sum(r[s] @ iC @ r[s] for s, iC in blocks))
+        if igo is not None:
+            ri = igo.y - np.asarray(jax.jit(igo.__call__)(jnp.asarray(p)))
+            c += float(np.sum((ri / igo.sigma) ** 2))
+            n += ri.size
         res.append({"fraction": t, "chi2": c, "prior": float(np.sum(pr * (p - th0) ** 2)), "n_rows": n})
         print(f"fraction {t:5.3f}: chi2 {c:.1f} + prior {res[-1]['prior']:.1f} on {n} rows "
               f"(base {h['base']}: {ob['chi2'] + ob['prior']:.1f} on {ob['n_rows']})", flush=True)
@@ -405,6 +420,64 @@ def cmd_jac(a):
         return
     a.at, a.out = theta_of(a.it), it_dir(a.it)
     S22.cmd_jac(a)
+
+
+def cmd_igo(a):
+    """The Igo et al. (2026) rows at iterate ``it``: model and Jacobian into ``igo26.npz``."""
+    d = it_dir(a.it)
+    h = json.loads((d / "theta.json").read_text()) if a.it else {}
+    if h.get("stop") or (d / IGO.FILE).is_file():
+        print(f"iterate {a.it}: nothing to do")
+        print("done in igo")
+        return
+    t0 = time.time()
+    meta = json.loads((S22.OUT / "meta.json").read_text())
+    th = theta_of(a.it)
+    model = IGO.Igo26Model(public_config(**S22.LAYOUTS[S22.LAYOUT]), th)
+    m, jac = IGO.write(d / IGO.FILE, model, th, meta["names"])
+    c = float(np.sum(((model.y - m) / model.sigma) ** 2))
+    print(f"iterate {a.it}: Igo26 chi2 {c:.1f} on {m.size} rows; non-zero columns",
+          [meta["names"][i] for i in np.flatnonzero(np.abs(jac).sum(0) > 0)], flush=True)
+    print(f"done in {time.time() - t0:.1f} s")
+
+
+def cmd_igo_check(a):
+    """At iterate ``it``: the Igo chi2 there and at the defaults, the vector chi2 with and without
+    the Igo term, and the Jacobian against central finite differences on three AGN parameters."""
+    import jax
+    import jax.numpy as jnp
+
+    rec = Record(__file__)
+    meta = json.loads((S22.OUT / "meta.json").read_text())
+    names = meta["names"]
+    th, th0 = theta_of(a.it), np.asarray(meta["theta0"])
+    model = IGO.Igo26Model(public_config(**S22.LAYOUTS[S22.LAYOUT]), th)
+    f = jax.jit(model.__call__)
+    m, jac = model.value_and_jacobian(th)
+    m0 = np.asarray(f(jnp.asarray(th0)))
+    chi = lambda mm: float(np.sum(((model.y - mm) / model.sigma) ** 2))
+    fd = {}
+    for n in ("log10_ferdf", "log10_lstar", "mu_bh"):
+        i = names.index(n)
+        hstep = 1e-3
+        up, dn = th.copy(), th.copy()
+        up[i] += hstep
+        dn[i] -= hstep
+        num = (np.asarray(f(jnp.asarray(up))) - np.asarray(f(jnp.asarray(dn)))) / (2 * hstep)
+        fd[n] = {"max_abs_jac": float(np.max(np.abs(jac[:, i]))),
+                 "max_rel_diff": float(np.max(np.abs(num - jac[:, i])) / max(np.max(np.abs(jac[:, i])), 1e-30))}
+    _, D, _ = S22._assemble(it_dir(a.it), jac=False)
+    _, r, blocks = system(D)
+    cvec = float(sum(r[s] @ iC @ r[s] for s, iC in blocks))
+    nz = [names[i] for i in np.flatnonzero(np.abs(jac).sum(0) > 0)]
+    print(f"iterate {a.it}: Igo26 chi2 {chi(m):.1f} on {m.size} rows (defaults {chi(m0):.1f}); "
+          f"vector chi2 {cvec:.1f}; finite differences {fd}", flush=True)
+    rec.data.update(it=a.it, map_tag=os.environ.get("WP3FEAS_MAP_TAG", ""), igo_z=os.environ.get("WP3FEAS_IGO_Z"),
+                    n_igo=int(m.size), chi2_igo_at_it=chi(m), chi2_igo_at_defaults=chi(m0), chi2_vector=cvec,
+                    n_vector=int(sum(s.size for s, _ in blocks)), jacobian_columns=nz, finite_differences=fd,
+                    resid_over_sigma=((model.y - m) / model.sigma).tolist(), x=model.x.tolist())
+    print(rec.write(f"26_igo_check{S22.LAYOUT}{os.environ.get('WP3FEAS_MAP_TAG', '')}_it{a.it}"))
+    print("done in igo-check")
 
 
 def cmd_eval(a):
@@ -489,7 +562,7 @@ def cmd_summary(a):
 
 def main(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=("step", "search", "jac", "eval", "score", "summary"))
+    ap.add_argument("cmd", choices=("step", "search", "jac", "eval", "score", "summary", "igo", "igo-check"))
     ap.add_argument("--it", type=int, default=1)
     ap.add_argument("--damp", type=float, default=1.0)
     ap.add_argument("--trust", type=float, default=1.0, help="largest change of a parameter per step, in prior widths")
@@ -503,7 +576,8 @@ def main(argv=None):
     ap.add_argument("--shard", default=None, help="search, jac: i/n, every n-th block from block i")
     a = ap.parse_args(argv)
     S22.set_layout(a.layout)
-    {"step": cmd_step, "search": cmd_search, "jac": cmd_jac, "eval": cmd_eval, "score": cmd_score, "summary": cmd_summary}[a.cmd](a)
+    {"step": cmd_step, "search": cmd_search, "jac": cmd_jac, "eval": cmd_eval, "score": cmd_score, "summary": cmd_summary,
+     "igo": cmd_igo, "igo-check": cmd_igo_check}[a.cmd](a)
 
 
 if __name__ == "__main__":

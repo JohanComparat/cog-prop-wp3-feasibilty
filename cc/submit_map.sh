@@ -16,11 +16,12 @@
 # VECTOR (a path at CC) fits another vector than v0, MASK a row mask of scripts/25_scale_cuts.py,
 # SHOT the Poisson-term JSONs of 25_scale_cuts.py agnshot (colon-separated), AGNBAND the AGN
 # catalogue band ("0.2:2.3" for eRASS1; a comma would split the --export list), SYS the floor
-# per row of scripts/28_sys_floor.py (its _sigma.npz at CC), PARTITION another GPU partition
+# per row of scripts/28_sys_floor.py (its _sigma.npz at CC), PARTITION another GPU partition,
+# EXTRA an external data term of script 26 (igo26: an `igo --it k` job after each Jacobian)
 # (gpu_h100; default the gpu_v100 of cc/gpu.sbatch).
 set -euo pipefail
 layout="${1-_s0}"; n="${2:-3}"; damp="${DAMP:-1}"; start="${START:-1}"; after="${AFTER:-}"
-mtag="${MAPTAG:-}"; shards="${SHARDS:-1}"; vec="${VECTOR:-}"; mask="${MASK:-}"; shot="${SHOT:-}"; band="${AGNBAND:-}"; sysf="${SYS:-}"; part="${PARTITION:-}"
+mtag="${MAPTAG:-}"; shards="${SHARDS:-1}"; vec="${VECTOR:-}"; mask="${MASK:-}"; shot="${SHOT:-}"; band="${AGNBAND:-}"; sysf="${SYS:-}"; extra="${EXTRA:-}"; part="${PARTITION:-}"
 R=/sps/lsst/users/jcomparat01/ggah/wp3feas/software/cog-prop-wp3-feasibilty
 SSH="ssh -o ControlMaster=auto -o ControlPath=$HOME/.ssh/cm-cc -o ControlPersist=8h -o BatchMode=yes"
 tag="${layout:-_s3}"
@@ -31,7 +32,7 @@ dep="$after"
 sub() {  # sub <name> <dependency> <script args...>: prints the job id
     local name=\$1 d=\$2; shift 2
     local id
-    id=\$(sbatch --parsable --job-name=\$name --export=ALL,WP3FEAS_MAP_TAG=$mtag${vec:+,WP3FEAS_VECTOR=$vec}${mask:+,WP3FEAS_MASK=$mask}${shot:+,WP3FEAS_SHOT=$shot}${band:+,WP3FEAS_AGN_BAND=$band}${sysf:+,WP3FEAS_SYS=$sysf} ${part:+-p $part} \${d:+--dependency=afterok:\$d} \
+    id=\$(sbatch --parsable --job-name=\$name --export=ALL,WP3FEAS_MAP_TAG=$mtag${vec:+,WP3FEAS_VECTOR=$vec}${mask:+,WP3FEAS_MASK=$mask}${shot:+,WP3FEAS_SHOT=$shot}${band:+,WP3FEAS_AGN_BAND=$band}${sysf:+,WP3FEAS_SYS=$sysf}${extra:+,WP3FEAS_EXTRA=$extra} ${part:+-p $part} \${d:+--dependency=afterok:\$d} \
         cc/gpu.sbatch scripts/26_map_fit.py "\$@" --layout "$layout" --tag "$mtag" 2>/dev/null)
     echo "\$id \$name" >> \$J
     echo "\$id \$name" >&2
@@ -53,6 +54,9 @@ for k in \$(seq $start \$(($start + $n - 1))); do
     else
         c=\$(sub wp3-search$tag$mtag-it\$k "\$s" search --it \$k)
         dep=\$(sub wp3-jac$tag$mtag-it\$k "\$c" jac --it \$k)
+    fi
+    if [ -n "$extra" ]; then
+        dep=\$(sub wp3-igo$tag$mtag-it\$k "\$dep" igo --it \$k)
     fi
 done
 REMOTE
